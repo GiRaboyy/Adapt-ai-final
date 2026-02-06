@@ -2,8 +2,8 @@
 -- Migration: 0001_init.sql
 -- Description: Creates core tables for organizations, profiles, courses, enrollments, and documents
 
--- Enable UUID extension
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+-- Note: Using gen_random_uuid() which is built into PostgreSQL 13+
+-- No extension needed for UUID generation
 
 -- =============================================================================
 -- A. System Tables
@@ -29,7 +29,7 @@ ON CONFLICT (id) DO NOTHING;
 
 -- organizations: Company/organization entities
 CREATE TABLE IF NOT EXISTS organizations (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -38,7 +38,7 @@ CREATE INDEX IF NOT EXISTS idx_organizations_created_at ON organizations(created
 
 -- profiles: User profiles (curators and employees)
 CREATE TABLE IF NOT EXISTS profiles (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     org_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
     email TEXT,
     full_name TEXT,
@@ -56,7 +56,7 @@ CREATE INDEX IF NOT EXISTS idx_profiles_role ON profiles(role);
 
 -- courses: Training courses
 CREATE TABLE IF NOT EXISTS courses (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     org_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
     size TEXT NOT NULL CHECK (size IN ('S', 'M', 'L')),
@@ -72,7 +72,7 @@ CREATE INDEX IF NOT EXISTS idx_courses_created_by ON courses(created_by);
 
 -- course_items: Questions within courses
 CREATE TABLE IF NOT EXISTS course_items (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     course_id UUID NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
     type TEXT NOT NULL CHECK (type IN ('quiz', 'open')),
     prompt TEXT NOT NULL,
@@ -91,7 +91,7 @@ CREATE INDEX IF NOT EXISTS idx_course_items_order ON course_items(course_id, ord
 
 -- enrollments: Employee course enrollments
 CREATE TABLE IF NOT EXISTS enrollments (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     course_id UUID NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
     employee_id UUID NOT NULL,
     status TEXT NOT NULL CHECK (status IN ('invited', 'in_progress', 'completed')),
@@ -107,7 +107,7 @@ CREATE INDEX IF NOT EXISTS idx_enrollments_status ON enrollments(status);
 
 -- answers: Student answers to course questions
 CREATE TABLE IF NOT EXISTS answers (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     enrollment_id UUID NOT NULL REFERENCES enrollments(id) ON DELETE CASCADE,
     course_item_id UUID NOT NULL REFERENCES course_items(id) ON DELETE CASCADE,
     answer_text TEXT,
@@ -150,7 +150,7 @@ CREATE TABLE IF NOT EXISTS org_usage (
 
 -- documents: Uploaded files and their metadata
 CREATE TABLE IF NOT EXISTS documents (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     org_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
     course_id UUID REFERENCES courses(id) ON DELETE SET NULL,
     bucket TEXT NOT NULL,
