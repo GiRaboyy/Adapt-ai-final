@@ -472,4 +472,294 @@ For issues or questions:
 
 **Stage 1 Complete** ✅
 
-Next: Stage 2 - Google OAuth & User Management
+---
+
+## Stage 2: Authentication & Role Management
+
+Stage 2 adds complete authentication and role-based access control to Adapt.
+
+### Auth Setup
+
+Before using authentication locally or in production, configure Supabase Auth settings:
+
+#### 1. Enable Email Provider
+
+1. Go to Supabase Dashboard → Authentication → Providers
+2. Enable "Email" provider
+3. Enable "Confirm email" option
+4. Customize email templates (optional)
+
+#### 2. Enable Google OAuth (Optional)
+
+1. Enable "Google" provider in Supabase Dashboard
+2. Create Google Cloud OAuth credentials:
+   - Go to [Google Cloud Console](https://console.cloud.google.com)
+   - Create new project or select existing
+   - Enable Google+ API
+   - Create OAuth 2.0 Client ID (Web application)
+   - Add authorized redirect URI: `https://[your-project-ref].supabase.co/auth/v1/callback`
+   - Copy Client ID and Secret to Supabase
+3. Test OAuth flow after setup
+
+#### 3. Configure Redirect URLs
+
+Add the following URLs to Authentication → URL Configuration → Redirect URLs:
+
+**Local development:**
+```
+http://localhost:3000/auth/callback
+```
+
+**Production:**
+```
+https://your-production-domain.com/auth/callback
+```
+
+**Preview deployments (Vercel):**
+```
+https://your-preview-domain.vercel.app/auth/callback
+```
+
+**Important:** Add each preview URL manually or use Vercel's stable preview domain feature.
+
+### Environment Variables
+
+Update your `.env.local` with the new app version:
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=https://xxxxx.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key-here
+SUPABASE_URL=https://xxxxx.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key-here
+ENVIRONMENT=local
+GIT_SHA=local-dev
+APP_VERSION=0.2.0
+```
+
+### Apply Auth Migration
+
+Push the auth migration to your Supabase database:
+
+```bash
+supabase db push
+```
+
+This creates the trigger that automatically creates user profiles when someone signs up.
+
+### Testing Auth Flows
+
+#### Email Signup
+
+1. Go to http://localhost:3000/auth
+2. Click "Sign up" tab
+3. Fill in name, email, password, and select role
+4. Submit → You'll see "Check your email"
+5. Open email and click confirmation link
+6. You'll be redirected to dashboard
+
+#### Email Login
+
+1. Go to http://localhost:3000/auth
+2. Enter email and password
+3. Click "Login" → Redirected to dashboard
+
+#### Google Sign In
+
+1. Go to http://localhost:3000/auth
+2. Click "Continue with Google"
+3. Authorize with Google account
+4. If first time: Select your role on onboarding screen
+5. You'll be redirected to dashboard
+
+#### Testing Without Email Confirmation (Development Only)
+
+For faster local testing, you can temporarily disable email confirmations:
+- Supabase Dashboard → Authentication → Settings
+- Disable "Enable email confirmations"
+- Users will be logged in immediately after signup
+
+**Remember to re-enable for production!**
+
+### Troubleshooting Auth Issues
+
+**"Redirect URL not allowed" error:**
+- Check that callback URL is added to Supabase Redirect URLs list
+- Verify URL matches exactly (including http/https and port)
+
+**Google sign-in fails:**
+- Verify Google OAuth credentials in Supabase Dashboard
+- Check that authorized redirect URI is correct in Google Cloud Console
+- Ensure Google+ API is enabled
+
+**Email confirmation not working:**
+- Check email confirmations are enabled in Supabase
+- Look for email in spam folder
+- Try resend button after 60 seconds
+
+**Can't access dashboard after login:**
+- Check browser console for errors
+- Verify migrations are applied: `supabase db push`
+- Ensure role was selected during signup
+
+### Authentication Features
+
+- ✅ Email/password signup with email confirmation
+- ✅ Email/password login
+- ✅ Google OAuth authentication
+- ✅ Role selection (Curator/Employee)
+- ✅ Email verification with resend capability
+- ✅ Protected routes with middleware
+- ✅ Role-based dashboard content
+- ✅ Session management with httpOnly cookies
+- ✅ Automatic profile creation via database triggers
+
+---
+
+**Stage 2 Complete** ✅
+
+Next: Stage 3 - Course Generation & AI Integration
+
+## Stage 2: Authentication & Role Management
+
+Stage 2 adds complete authentication and role-based access control to Adapt.
+
+### Auth Setup
+
+Before using authentication locally or in production, configure Supabase Auth settings:
+
+#### 1. Enable Email Provider
+
+1. Go to Supabase Dashboard → Authentication → Providers
+2. Enable "Email" provider
+3. Enable "Confirm email" option
+4. Customize email templates (optional)
+
+#### 2. Enable Google OAuth (Optional)
+
+1. Enable "Google" provider in Supabase Dashboard
+2. Create Google Cloud OAuth credentials:
+   - Go to [Google Cloud Console](https://console.cloud.google.com)
+   - Create new project or select existing
+   - Enable Google+ API
+   - Create OAuth 2.0 Client ID (Web application)
+   - Add authorized redirect URI: `https://[your-project-ref].supabase.co/auth/v1/callback`
+   - Copy Client ID and Secret to Supabase
+3. Test OAuth flow after setup
+
+#### 3. Configure Redirect URLs
+
+Add the following URLs to Authentication → URL Configuration → Redirect URLs:
+
+**Local development:**
+```
+http://localhost:3000/auth/callback
+```
+
+**Production:**
+```
+https://your-production-domain.com/auth/callback
+```
+
+**Preview deployments (Vercel):**
+```
+https://your-preview-domain.vercel.app/auth/callback
+```
+
+**Important:** Add each preview URL manually or use Vercel's stable preview domain feature.
+
+### Environment Variables
+
+Update your `.env.local` with the new app version:
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=https://xxxxx.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key-here
+SUPABASE_URL=https://xxxxx.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key-here
+ENVIRONMENT=local
+GIT_SHA=local-dev
+APP_VERSION=0.2.0
+```
+
+### Apply Auth Migration
+
+Push the auth migration to your Supabase database:
+
+```bash
+supabase db push
+```
+
+This creates the trigger that automatically creates user profiles when someone signs up.
+
+### Testing Auth Flows
+
+#### Email Signup
+
+1. Go to http://localhost:3000/auth
+2. Click "Sign up" tab
+3. Fill in name, email, password, and select role
+4. Submit → You'll see "Check your email"
+5. Open email and click confirmation link
+6. You'll be redirected to dashboard
+
+#### Email Login
+
+1. Go to http://localhost:3000/auth
+2. Enter email and password
+3. Click "Login" → Redirected to dashboard
+
+#### Google Sign In
+
+1. Go to http://localhost:3000/auth
+2. Click "Continue with Google"
+3. Authorize with Google account
+4. If first time: Select your role on onboarding screen
+5. You'll be redirected to dashboard
+
+#### Testing Without Email Confirmation (Development Only)
+
+For faster local testing, you can temporarily disable email confirmations:
+- Supabase Dashboard → Authentication → Settings
+- Disable "Enable email confirmations"
+- Users will be logged in immediately after signup
+
+**Remember to re-enable for production!**
+
+### Troubleshooting Auth Issues
+
+**"Redirect URL not allowed" error:**
+- Check that callback URL is added to Supabase Redirect URLs list
+- Verify URL matches exactly (including http/https and port)
+
+**Google sign-in fails:**
+- Verify Google OAuth credentials in Supabase Dashboard
+- Check that authorized redirect URI is correct in Google Cloud Console
+- Ensure Google+ API is enabled
+
+**Email confirmation not working:**
+- Check email confirmations are enabled in Supabase
+- Look for email in spam folder
+- Try resend button after 60 seconds
+
+**Can't access dashboard after login:**
+- Check browser console for errors
+- Verify migrations are applied: `supabase db push`
+- Ensure role was selected during signup
+
+### Authentication Features
+
+- ✅ Email/password signup with email confirmation
+- ✅ Email/password login
+- ✅ Google OAuth authentication
+- ✅ Role selection (Curator/Employee)
+- ✅ Email verification with resend capability
+- ✅ Protected routes with middleware
+- ✅ Role-based dashboard content
+- ✅ Session management with httpOnly cookies
+- ✅ Automatic profile creation via database triggers
+
+---
+
+**Stage 2 Complete** ✅
+
+Next: Stage 3 - Course Generation & AI Integration
