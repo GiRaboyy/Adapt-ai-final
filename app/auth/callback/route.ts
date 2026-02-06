@@ -83,21 +83,12 @@ export async function GET(request: Request) {
           return NextResponse.redirect(`${requestUrl.origin}/auth?error=profile_creation_failed`);
         }
 
-        // Profile created successfully
-        if (user.user_metadata?.role) {
-          return NextResponse.redirect(`${requestUrl.origin}/dashboard`);
-        } else {
-          return NextResponse.redirect(`${requestUrl.origin}/onboarding`);
-        }
+        // Profile created successfully - go to dashboard
+        return NextResponse.redirect(`${requestUrl.origin}/dashboard`);
       } catch (fetchError) {
         console.error('Profile API fetch error:', fetchError);
         return NextResponse.redirect(`${requestUrl.origin}/auth?error=profile_creation_failed`);
       }
-    }
-
-    // Check if profile has a role
-    if (!profile.role) {
-      return NextResponse.redirect(`${requestUrl.origin}/onboarding`);
     }
 
     // All good - redirect to dashboard

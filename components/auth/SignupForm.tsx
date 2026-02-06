@@ -5,14 +5,16 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { Input } from '../ui/Input';
 import { Button } from '../ui/Button';
 import { createClient } from '@/lib/supabase/client';
 import type { UserRole } from '@/lib/types';
 
-export function SignupForm() {
-  const router = useRouter();
+interface SignupFormProps {
+  onSignupSuccess?: (email: string) => void;
+}
+
+export function SignupForm({ onSignupSuccess }: SignupFormProps) {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -76,9 +78,10 @@ export function SignupForm() {
         return;
       }
 
-      // Success - redirect to verify page with email
-      localStorage.setItem('verify_email', email);
-      router.push('/auth/verify');
+      // Success - notify parent
+      if (onSignupSuccess) {
+        onSignupSuccess(email);
+      }
     } catch (err) {
       setError('An unexpected error occurred. Please try again.');
       setIsLoading(false);

@@ -12,7 +12,6 @@ export async function middleware(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
 
   const isAuthPage = request.nextUrl.pathname.startsWith('/auth');
-  const isOnboarding = request.nextUrl.pathname.startsWith('/onboarding');
   const isDashboard = request.nextUrl.pathname.startsWith('/dashboard');
 
   // If user is logged in and trying to access auth pages, redirect to dashboard
@@ -21,23 +20,8 @@ export async function middleware(request: NextRequest) {
   }
 
   // Protected routes - require authentication
-  if (!user && (isDashboard || isOnboarding)) {
+  if (!user && isDashboard) {
     return NextResponse.redirect(new URL('/auth', request.url));
-  }
-
-  // Dashboard requires role
-  if (user && isDashboard) {
-    const { data: profileData } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single();
-
-    const profile = profileData as { role: string } | null;
-
-    if (!profile || !profile.role) {
-      return NextResponse.redirect(new URL('/onboarding', request.url));
-    }
   }
 
   return response;
