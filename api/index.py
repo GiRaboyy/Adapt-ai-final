@@ -2,8 +2,10 @@
 FastAPI application entrypoint for Vercel serverless deployment.
 Provides health check endpoints for system monitoring.
 """
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import Optional
 from api._lib.settings import settings
 
 # Create FastAPI app instance
@@ -200,3 +202,132 @@ async def test_upload():
             "bucket": bucket_name,
             "path": "",
         }
+
+
+# =============================================================================
+# Profile Management Endpoints
+# =============================================================================
+
+class ProfileCreate(BaseModel):
+    """Request body for creating/updating a profile."""
+    user_id: str
+    email: Optional[str] = None
+    full_name: Optional[str] = None
+    role: str = "curator"
+
+
+class ProfileUpdate(BaseModel):
+    """Request body for updating profile fields."""
+    full_name: Optional[str] = None
+    role: Optional[str] = None
+    org_id: Optional[str] = None
+
+
+@app.post("/api/profiles/ensure")
+async def ensure_profile(profile: ProfileCreate):
+    """
+    Ensure a profile exists for the given user.
+    Creates if not exists, returns existing if found.
+    Uses service role key to bypass RLS.
+    """
+    from api._lib.supabase_admin import get_admin_client
+    
+    try:
+        supabase = get_admin_client()
+        
+        # Check if profile exists
+        result = supabase.table("profiles").select("*").eq("id", profile.user_id).maybe_single().execute()
+        
+        if result.data:
+            # Profile exists, return it
+            return {
+                "ok": True,
+                "profile": result.data,
+                "created": False,
+            }
+        
+        # Create new profile
+        new_profile = {
+            "id": profile.user_id,
+            "email": profile.email,
+            "full_name": profile.full_name,
+            "role": profile.role,
+            "org_id": None,
+        }
+        
+        insert_result = supabase.table("profiles").insert(new_profile).execute()
+        
+        return {
+            "ok": True,
+            "profile": insert_result.data[0] if insert_result.data else new_profile,
+            "created": True,
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Profile operation failed: {str(e)}")
+
+
+@app.patch("/api/profiles/{user_id}")
+async def update_profile(user_id: str, updates: ProfileUpdate):
+    """
+    Update a user's profile.
+    Uses service role key to bypass RLS.
+    """
+    from api._lib.supabase_admin import get_admin_client
+    
+    try:
+        supabase = get_admin_client()
+        
+        # Build update dict with only provided fields
+        update_data = {}
+        if updates.full_name is not None:
+            update_data["full_name"] = updates.full_name
+        if updates.role is not None:
+            update_data["role"] = updates.role
+        if updates.org_id is not None:
+            update_data["org_id"] = updates.org_id
+        
+        if not update_data:
+            raise HTTPException(status_code=400, detail="No fields to update")
+        
+        result = supabase.table("profiles").update(update_data).eq("id", user_id).execute()
+        
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Profile not found")
+        
+        return {
+            "ok": True,
+            "profile": result.data[0],
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Update failed: {str(e)}")
+
+
+@app.get("/api/profiles/{user_id}")
+async def get_profile(user_id: str):
+    """
+    Get a user's profile.
+    Uses service role key to bypass RLS.
+    """
+    from api._lib.supabase_admin import get_admin_client
+    
+    try:
+        supabase = get_admin_client()
+        
+        result = supabase.table("profiles").select("*").eq("id", user_id).maybe_single().execute()
+        
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Profile not found")
+        
+        return {
+            "ok": True,
+            "profile": result.data,
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Fetch failed: {str(e)}")

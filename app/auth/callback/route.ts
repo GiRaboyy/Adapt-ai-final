@@ -56,30 +56,42 @@ export async function GET(request: Request) {
 
     if (profileError) {
       console.error('Profile fetch error:', profileError);
-      return NextResponse.redirect(`${requestUrl.origin}/auth?error=profile_error`);
+      // Don't fail - try to create profile via API
     }
 
-    // If profile doesn't exist, create it defensively (trigger might have failed)
+    // If profile doesn't exist, create it via the Python API (bypasses RLS)
     if (!profile) {
-      // @ts-expect-error - Supabase type inference issue with insert
-      const { error: insertError } = await supabase.from('profiles').insert([{
-        id: user.id,
-        email: user.email || null,
-        full_name: user.user_metadata?.full_name || null,
-        role: (user.user_metadata?.role || 'curator') as 'curator' | 'employee',
-        org_id: null,
-      }]);
+      try {
+        const apiUrl = process.env.VERCEL_URL 
+          ? `https://${process.env.VERCEL_URL}/api/profiles/ensure`
+          : `${requestUrl.origin}/api/profiles/ensure`;
+        
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: user.id,
+            email: user.email || null,
+            full_name: user.user_metadata?.full_name || null,
+            role: user.user_metadata?.role || 'curator',
+          }),
+        });
 
-      if (insertError) {
-        console.error('Profile creation error:', insertError);
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          console.error('Profile creation API error:', errorData);
+          return NextResponse.redirect(`${requestUrl.origin}/auth?error=profile_creation_failed`);
+        }
+
+        // Profile created successfully
+        if (user.user_metadata?.role) {
+          return NextResponse.redirect(`${requestUrl.origin}/dashboard`);
+        } else {
+          return NextResponse.redirect(`${requestUrl.origin}/onboarding`);
+        }
+      } catch (fetchError) {
+        console.error('Profile API fetch error:', fetchError);
         return NextResponse.redirect(`${requestUrl.origin}/auth?error=profile_creation_failed`);
-      }
-
-      // If role was provided, go to dashboard; otherwise onboarding
-      if (user.user_metadata?.role) {
-        return NextResponse.redirect(`${requestUrl.origin}/dashboard`);
-      } else {
-        return NextResponse.redirect(`${requestUrl.origin}/onboarding`);
       }
     }
 
