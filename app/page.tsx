@@ -10,7 +10,7 @@ export default function Home() {
             AI-Powered Training Platform for B2B Companies
           </p>
           <p className="text-lg text-gray-600 mb-12">
-            Automatically generate interactive training courses from your company's knowledge base.
+            Automatically generate interactive training courses from your company&apos;s knowledge base.
           </p>
           <div className="flex justify-center gap-4">
             <a

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import Link from 'next/link'
 
 interface HealthCheckResult {
   ok: boolean
@@ -129,6 +130,7 @@ export default function StatusPage() {
 
   useEffect(() => {
     runAllChecks()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const renderCheckStatus = (check: CheckStatus, title: string) => {
@@ -257,12 +259,12 @@ export default function StatusPage() {
             >
               Refresh All Checks
             </button>
-            <a
+            <Link
               href="/"
               className="ml-4 px-6 py-3 bg-gray-200 text-gray-800 rounded-lg font-semibold hover:bg-gray-300 transition-colors inline-block"
             >
               ← Back to Home
-            </a>
+            </Link>
           </div>
 
           <div className="grid md:grid-cols-2 gap-6">
