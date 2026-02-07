@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { LoginForm } from '@/components/auth/LoginForm';
 import { SignupForm } from '@/components/auth/SignupForm';
@@ -16,7 +16,37 @@ function LogoMark() {
   );
 }
 
-export default function AuthPage() {
+function LeftPanel() {
+  return (
+    <div className="hidden lg:flex lg:w-[48%] bg-dark-bg relative overflow-hidden p-10 noise-overlay">
+      <div className="relative z-10 flex flex-col justify-between h-full">
+        <LogoMark />
+        
+        <div className="space-y-6 max-w-lg">
+          <h1 className="font-display text-5xl xl:text-6xl font-bold text-white leading-[1.1] tracking-tight">
+            Обучайте<br />сотрудников<br />быстрее с Adapt
+          </h1>
+          <p className="text-gray-400 text-lg xl:text-xl leading-relaxed">
+            ИИ-курсы на основе базы знаний вашей компании
+          </p>
+        </div>
+
+        <p className="text-gray-600 text-sm">
+          Онбординг, аттестации и тренировки продаж — за часы, а не недели.
+        </p>
+      </div>
+
+      {/* Animated gradient blobs */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] rounded-full bg-gradient-to-br from-lime/35 via-green-500/20 to-transparent animate-float" />
+        <div className="absolute bottom-1/3 right-1/4 w-[400px] h-[400px] rounded-full bg-gradient-to-tr from-emerald-400/18 via-lime/12 to-transparent animate-float-slow" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[400px] rounded-full bg-lime/5 blur-[100px]" />
+      </div>
+    </div>
+  );
+}
+
+function AuthContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState<'login' | 'signup'>('login');
@@ -65,32 +95,7 @@ export default function AuthPage() {
   if (verifyEmail) {
     return (
       <div className="min-h-screen flex flex-col lg:flex-row">
-        {/* Left Panel */}
-        <div className="hidden lg:flex lg:w-[48%] bg-dark-bg relative overflow-hidden p-10 noise-overlay">
-          <div className="relative z-10 flex flex-col justify-between h-full">
-            <LogoMark />
-            
-            <div className="space-y-6 max-w-lg">
-              <h1 className="font-display text-5xl font-bold text-white leading-tight tracking-tight">
-                Обучайте сотрудников<br />быстрее с Adapt
-              </h1>
-              <p className="text-gray-400 text-lg leading-relaxed">
-                ИИ-курсы на основе базы знаний вашей компании
-              </p>
-            </div>
-
-            <p className="text-gray-600 text-sm">
-              Онбординг, аттестации и тренировки продаж — за часы, а не недели.
-            </p>
-          </div>
-
-          {/* Animated blobs */}
-          <div className="absolute inset-0 overflow-hidden pointer-events-none">
-            <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] rounded-full bg-gradient-to-br from-lime/30 via-green-500/20 to-transparent animate-float" />
-            <div className="absolute bottom-1/3 right-1/4 w-[400px] h-[400px] rounded-full bg-gradient-to-tr from-emerald-400/15 via-lime/10 to-transparent animate-float-slow" />
-            <div className="absolute top-1/2 left-1/2 w-[300px] h-[300px] rounded-full bg-lime/5 blur-3xl" />
-          </div>
-        </div>
+        <LeftPanel />
 
         {/* Right Panel */}
         <div className="flex-1 flex items-center justify-center p-6 lg:p-12 bg-[#F6F7F9]">
@@ -144,32 +149,7 @@ export default function AuthPage() {
 
   return (
     <div className="min-h-screen flex flex-col lg:flex-row">
-      {/* Left Panel - Futuristic Dark */}
-      <div className="hidden lg:flex lg:w-[48%] bg-dark-bg relative overflow-hidden p-10 noise-overlay">
-        <div className="relative z-10 flex flex-col justify-between h-full">
-          <LogoMark />
-          
-          <div className="space-y-6 max-w-lg">
-            <h1 className="font-display text-5xl xl:text-6xl font-bold text-white leading-[1.1] tracking-tight">
-              Обучайте<br />сотрудников<br />быстрее с Adapt
-            </h1>
-            <p className="text-gray-400 text-lg xl:text-xl leading-relaxed">
-              ИИ-курсы на основе базы знаний вашей компании
-            </p>
-          </div>
-
-          <p className="text-gray-600 text-sm">
-            Онбординг, аттестации и тренировки продаж — за часы, а не недели.
-          </p>
-        </div>
-
-        {/* Animated gradient blobs */}
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] rounded-full bg-gradient-to-br from-lime/35 via-green-500/20 to-transparent animate-float" />
-          <div className="absolute bottom-1/3 right-1/4 w-[400px] h-[400px] rounded-full bg-gradient-to-tr from-emerald-400/18 via-lime/12 to-transparent animate-float-slow" />
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[400px] rounded-full bg-lime/5 blur-[100px]" />
-        </div>
-      </div>
+      <LeftPanel />
 
       {/* Right Panel - Form */}
       <div className="flex-1 flex items-center justify-center p-6 lg:p-12 bg-[#F6F7F9]">
@@ -243,5 +223,21 @@ export default function AuthPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+function LoadingFallback() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-[#F6F7F9]">
+      <div className="animate-spin h-8 w-8 border-4 border-lime border-t-transparent rounded-full" />
+    </div>
+  );
+}
+
+export default function AuthPage() {
+  return (
+    <Suspense fallback={<LoadingFallback />}>
+      <AuthContent />
+    </Suspense>
   );
 }
