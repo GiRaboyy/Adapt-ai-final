@@ -424,6 +424,33 @@ pip install -r requirements.txt
 
 **Solution**: Verify you're using `SUPABASE_SERVICE_ROLE_KEY`, not anon key.
 
+### Vercel Deployment Protection (ERR_TOO_MANY_REDIRECTS)
+
+**Cause**: Vercel Deployment Protection is enabled on Preview deployments, which returns HTML "Authentication Required" instead of JSON for API routes.
+
+**Symptoms**:
+- `ERR_TOO_MANY_REDIRECTS` error after email confirmation
+- Auth callback fails silently
+- Profile not created, user stuck in loop
+
+**Solution**:
+
+1. **Disable Deployment Protection for Preview** (recommended for testing):
+   - Vercel Dashboard → Your Project → Settings → Deployment Protection
+   - Set "Vercel Authentication" to "Off" for Preview
+   - Or add your IP/team to the bypass list
+
+2. **Test on Production domain**:
+   - Production deployments typically don't have this protection
+   - Use your production URL: `https://your-project.vercel.app`
+
+3. **Architecture Note**:
+   - Auth flow now creates profiles directly in `/auth/callback` using service role key
+   - No client-side `/api/profiles/ensure` calls required
+   - This makes auth work even when API routes are protected
+
+**Important**: The auth callback (`/auth/callback`) is a Next.js server route, not a Python API, so it's not affected by Vercel Authentication protection.
+
 ## Development Commands
 
 ```bash

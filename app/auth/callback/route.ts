@@ -1,9 +1,13 @@
 /**
  * OAuth/Email callback handler
- * Exchanges authorization code for session and creates/updates profile
+ * Exchanges authorization code for session and creates/updates profile directly
+ * 
+ * IMPORTANT: This route does NOT depend on /api/profiles/ensure
+ * Profile creation happens directly here using service role key
  */
 
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
+import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 
@@ -28,6 +32,7 @@ export async function GET(request: Request) {
 
   const cookieStore = await cookies();
 
+  // Client for session management (uses anon key)
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -60,51 +65,56 @@ export async function GET(request: Request) {
     const user = data.user;
 
     if (!user) {
-      return NextResponse.redirect(`${requestUrl.origin}/auth?error=no_user`);
+      return NextResponse.redirect(`${requestUrl.origin}/auth?error=session_not_created`);
     }
 
-    // Always ensure profile exists via Python API (bypasses RLS)
-    const apiUrl = process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}/api/profiles/ensure`
-      : `${requestUrl.origin}/api/profiles/ensure`;
+    // Create admin client with service role key to bypass RLS
+    const supabaseAdmin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+        },
+      }
+    );
 
-    // Check if user already has a profile with a role
-    const { data: existingProfile } = await supabase
+    // Check if profile exists and get role
+    const { data: existingProfile } = await supabaseAdmin
       .from('profiles')
-      .select('role')
+      .select('id, role')
       .eq('id', user.id)
       .maybeSingle();
 
-    const profileData = existingProfile as { role: string | null } | null;
-    const hasRole = profileData && profileData.role;
+    let role: string | null = null;
 
-    // If no role, create profile without role (user will be redirected to role selection)
-    if (!hasRole) {
-      try {
-        const response = await fetch(apiUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            user_id: user.id,
-            email: user.email || null,
-            full_name: user.user_metadata?.full_name || user.user_metadata?.name || null,
-            role: null, // Don't set role yet
-          }),
+    if (existingProfile) {
+      // Profile exists - get role
+      role = existingProfile.role;
+    } else {
+      // Create new profile without role (user will select on /auth/role)
+      const { error: insertError } = await supabaseAdmin
+        .from('profiles')
+        .insert({
+          id: user.id,
+          email: user.email || null,
+          full_name: user.user_metadata?.full_name || user.user_metadata?.name || null,
+          role: null,
+          org_id: null,
         });
 
-        if (!response.ok) {
-          console.error('Profile API error:', await response.text());
-        }
-      } catch (fetchError) {
-        console.error('Profile API fetch error:', fetchError);
-        // Don't fail the callback if profile creation fails
+      if (insertError) {
+        console.error('Profile insert error:', insertError);
+        // Don't fail - user can still proceed, profile will be created later
       }
+    }
 
-      // Redirect to role selection
+    // Redirect based on role
+    if (!role) {
       return NextResponse.redirect(`${requestUrl.origin}/auth/role`);
     }
 
-    // User has role - redirect to dashboard
     return NextResponse.redirect(`${requestUrl.origin}/dashboard`);
 
   } catch (err) {

@@ -19,6 +19,7 @@ export default function RoleSelectionPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [checking, setChecking] = useState(true);
+  const [noSession, setNoSession] = useState(false);
 
   const checkAuth = useCallback(async () => {
     try {
@@ -26,7 +27,9 @@ export default function RoleSelectionPage() {
       const { data: { user } } = await supabase.auth.getUser();
 
       if (!user) {
-        router.push('/auth');
+        // No session - show message instead of redirect
+        setNoSession(true);
+        setChecking(false);
         return;
       }
 
@@ -41,13 +44,14 @@ export default function RoleSelectionPage() {
 
       if (profile && profile.role) {
         // Already has role, redirect to dashboard
-        router.push('/dashboard');
+        router.replace('/dashboard');
         return;
       }
 
       setChecking(false);
     } catch (err) {
       console.error('Auth check error:', err);
+      setNoSession(true);
       setChecking(false);
     }
   }, [router]);
@@ -70,28 +74,23 @@ export default function RoleSelectionPage() {
       const { data: { user } } = await supabase.auth.getUser();
 
       if (!user) {
-        router.push('/auth');
+        setNoSession(true);
+        setIsLoading(false);
         return;
       }
 
-      // Update profile via API
-      const apiUrl = process.env.NEXT_PUBLIC_VERCEL_URL
-        ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}/api/profiles/ensure`
-        : `${window.location.origin}/api/profiles/ensure`;
+      // Update profile role directly via Supabase
+      // Profile should already exist from callback, just update role
+      const { error: updateError } = await (supabase
+        .from('profiles') as ReturnType<typeof supabase.from>)
+        .update({ role: selectedRole })
+        .eq('id', user.id);
 
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: user.id,
-          email: user.email || null,
-          full_name: user.user_metadata?.full_name || user.user_metadata?.name || null,
-          role: selectedRole,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to update role');
+      if (updateError) {
+        console.error('Role update error:', updateError);
+        setError('Не удалось сохранить роль. Попробуйте ещё раз.');
+        setIsLoading(false);
+        return;
       }
 
       // Success - redirect to dashboard
@@ -104,10 +103,43 @@ export default function RoleSelectionPage() {
     }
   };
 
+  // Loading state
   if (checking) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#F6F7F9]">
         <div className="animate-spin h-8 w-8 border-4 border-lime border-t-transparent rounded-full" />
+      </div>
+    );
+  }
+
+  // No session - show friendly message
+  if (noSession) {
+    return (
+      <div className="min-h-screen bg-[#F6F7F9] flex items-center justify-center p-6">
+        <div className="w-full max-w-md">
+          <div className="glass-card rounded-2xl shadow-xl px-10 py-12 text-center">
+            <div className="flex justify-center mb-6">
+              <LogoMark />
+            </div>
+
+            <div className="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-6">
+              <svg className="w-8 h-8 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            </div>
+
+            <h1 className="font-display text-2xl font-bold text-gray-900 mb-3">
+              Сессия не найдена
+            </h1>
+            <p className="text-gray-600 mb-8">
+              Для выбора роли необходимо войти в систему
+            </p>
+
+            <Button onClick={() => router.push('/auth')} variant="primary" className="w-full">
+              Войти в систему
+            </Button>
+          </div>
+        </div>
       </div>
     );
   }
