@@ -74,7 +74,7 @@ export function SignupForm({ onSignupSuccess, switchToLogin }: SignupFormProps) 
       });
 
       if (signUpError) {
-        // Handle "user already registered" errors
+        // Handle specific error types
         if (
           signUpError.message.includes('already registered') ||
           signUpError.message.includes('already exists') ||
@@ -82,6 +82,14 @@ export function SignupForm({ onSignupSuccess, switchToLogin }: SignupFormProps) 
         ) {
           setError('Аккаунт с таким email уже существует.');
           setShowResendOption(true);
+        } else if (
+          signUpError.message.includes('email') &&
+          signUpError.message.toLowerCase().includes('send')
+        ) {
+          // Email sending error - often rate limiting
+          setError('Не удалось отправить письмо. Подождите минуту и попробуйте ещё раз.');
+        } else if (signUpError.message.includes('rate limit')) {
+          setError('Слишком много попыток. Подождите минуту.');
         } else {
           setError(signUpError.message);
         }
