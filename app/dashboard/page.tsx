@@ -4,6 +4,7 @@
 
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import { createClient as createServiceClient } from '@supabase/supabase-js';
 import { SignOutButton } from '@/components/dashboard/SignOutButton';
 
 function LogoMark() {
@@ -24,8 +25,20 @@ export default async function DashboardPage() {
     redirect('/auth');
   }
 
-  // Get profile
-  const { data: profileData } = await supabase
+  // Use service role key to bypass RLS for profile read
+  const supabaseAdmin = createServiceClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    }
+  );
+
+  // Get profile using admin client
+  const { data: profileData } = await supabaseAdmin
     .from('profiles')
     .select('full_name, email, role')
     .eq('id', user.id)
