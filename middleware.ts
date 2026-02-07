@@ -1,11 +1,11 @@
 /**
  * Middleware for route protection and authentication
  * Prevents redirect loops by never blocking /auth/callback or /auth/role
+ * IMPORTANT: Does NOT enforce role check on dashboard - users can set role later
  */
 
 import { createClient } from '@/lib/supabase/middleware';
 import { NextResponse, type NextRequest } from 'next/server';
-import { createClient as createServiceClient } from '@supabase/supabase-js';
 
 export async function middleware(request: NextRequest) {
   const { supabase, response } = await createClient(request);
@@ -17,6 +17,7 @@ export async function middleware(request: NextRequest) {
     '/auth/role',
     '/auth/forgot',
     '/auth/reset',
+    '/auth/verify',
   ];
 
   if (allowedPaths.some(path => pathname === path)) {
@@ -29,73 +30,18 @@ export async function middleware(request: NextRequest) {
   const isAuthPage = pathname.startsWith('/auth');
   const isDashboard = pathname.startsWith('/dashboard');
 
-  // If user is logged in and trying to access auth pages, redirect based on role
+  // If user is logged in and trying to access auth pages (login/signup), redirect to dashboard
   if (user && isAuthPage) {
-    try {
-      const supabaseAdmin = createServiceClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!,
-        {
-          auth: {
-            autoRefreshToken: false,
-            persistSession: false,
-          },
-        }
-      );
-
-      const { data: profile } = await supabaseAdmin
-        .from('profiles')
-        .select('role')
-        .eq('id', user.id)
-        .maybeSingle();
-
-      if (profile && profile.role) {
-        // User has role - redirect to dashboard
-        return NextResponse.redirect(new URL('/dashboard', request.url));
-      } else {
-        // User doesn't have role - redirect to role selection
-        return NextResponse.redirect(new URL('/auth/role', request.url));
-      }
-    } catch (err) {
-      console.error('Middleware auth check error:', err);
-      // On error, redirect to dashboard and let it handle
-      return NextResponse.redirect(new URL('/dashboard', request.url));
-    }
+    return NextResponse.redirect(new URL('/dashboard', request.url));
   }
 
-  // Protected routes - require authentication and role
+  // Protected routes - require authentication only (role is optional, can be set in-app)
   if (isDashboard) {
     if (!user) {
       return NextResponse.redirect(new URL('/auth', request.url));
     }
-
-    // Check if user has a role set
-    try {
-      const supabaseAdmin = createServiceClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!,
-        {
-          auth: {
-            autoRefreshToken: false,
-            persistSession: false,
-          },
-        }
-      );
-
-      const { data: profile } = await supabaseAdmin
-        .from('profiles')
-        .select('role')
-        .eq('id', user.id)
-        .maybeSingle();
-
-      if (!profile || !profile.role) {
-        // User doesn't have a role, redirect to role selection
-        return NextResponse.redirect(new URL('/auth/role', request.url));
-      }
-    } catch (err) {
-      console.error('Middleware role check error:', err);
-      // On error, let them through - the page will handle it
-    }
+    // No role check - let users access dashboard even without role
+    // They can set role later from within the app
   }
 
   return response;
@@ -103,6 +49,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\.(?:svg|png|jpg|jpeg|gif|webp)$|api|status).*)',
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$|api|status).*)',
   ],
 };

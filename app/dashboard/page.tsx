@@ -46,13 +46,8 @@ export default async function DashboardPage() {
 
   const profile = profileData as { full_name: string | null; email: string | null; role: string | null } | null;
 
-  // If no role, redirect to role selection
-  if (!profile || !profile.role) {
-    redirect('/auth/role');
-  }
-
-  // Use role from profile or default to curator
-  const role = profile?.role || 'curator';
+  // Use role from profile or default to null (no forced redirect to /auth/role)
+  const role = profile?.role || null;
   const isCurator = role === 'curator';
   const displayName = profile?.full_name || user.user_metadata?.full_name || 'Пользователь';
   const displayEmail = profile?.email || user.email;
@@ -74,13 +69,15 @@ export default async function DashboardPage() {
                 <p className="text-xs text-gray-500">{displayEmail}</p>
               </div>
               <div className="flex items-center gap-2">
-                <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                  isCurator 
-                    ? 'bg-lime/20 text-gray-900' 
-                    : 'bg-blue-100 text-blue-800'
-                }`}>
-                  {isCurator ? '💼 Куратор' : '👤 Сотрудник'}
-                </span>
+                {role && (
+                  <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                    isCurator 
+                      ? 'bg-lime/20 text-gray-900' 
+                      : 'bg-blue-100 text-blue-800'
+                  }`}>
+                    {isCurator ? '💼 Куратор' : '👤 Сотрудник'}
+                  </span>
+                )}
                 <SignOutButton />
               </div>
             </div>
@@ -90,20 +87,64 @@ export default async function DashboardPage() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Role Selection Banner - show if no role */}
+        {!role && (
+          <div className="mb-8 bg-lime/10 border-2 border-lime/30 rounded-2xl p-6">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div>
+                <h2 className="font-display text-xl font-bold text-gray-900 mb-1">
+                  Выберите вашу роль
+                </h2>
+                <p className="text-gray-600">
+                  Для полного доступа к функциям платформы укажите, кто вы
+                </p>
+              </div>
+              <a 
+                href="/auth/role" 
+                className="inline-flex items-center justify-center px-6 py-3 bg-lime hover:bg-lime-dark text-gray-900 font-bold rounded-xl transition-colors"
+              >
+                Выбрать роль
+              </a>
+            </div>
+          </div>
+        )}
+
         {/* Welcome Section */}
         <div className="mb-8">
           <h1 className="font-display text-3xl font-bold text-gray-900 mb-2">
             С возвращением, {displayName}! 👋
           </h1>
           <p className="text-gray-600">
-            {isCurator 
-              ? 'Управляйте курсами и отслеживайте прогресс сотрудников' 
-              : 'Проходите назначенные курсы и следите за своим прогрессом'}
+            {!role 
+              ? 'Добро пожаловать в Adapt!'
+              : isCurator 
+                ? 'Управляйте курсами и отслеживайте прогресс сотрудников' 
+                : 'Проходите назначенные курсы и следите за своим прогрессом'}
           </p>
         </div>
 
         {/* Role-specific Content */}
-        {isCurator ? (
+        {!role ? (
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 text-center">
+            <div className="max-w-md mx-auto">
+              <div className="w-20 h-20 bg-lime/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                <span className="text-4xl">🌟</span>
+              </div>
+              <h2 className="font-display text-2xl font-bold text-gray-900 mb-2">
+                Добро пожаловать в Adapt!
+              </h2>
+              <p className="text-gray-600 mb-6">
+                Выберите вашу роль, чтобы получить доступ ко всем функциям платформы.
+              </p>
+              <a 
+                href="/auth/role" 
+                className="inline-flex items-center justify-center px-6 py-3 bg-lime hover:bg-lime-dark text-gray-900 font-bold rounded-xl transition-colors"
+              >
+                Выбрать роль
+              </a>
+            </div>
+          </div>
+        ) : isCurator ? (
           <div className="space-y-6">
             {/* Curator Dashboard */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
