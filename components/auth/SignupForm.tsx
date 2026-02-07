@@ -145,29 +145,35 @@ export function SignupForm({ onSignupSuccess, switchToLogin }: SignupFormProps) 
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-5">
+    <form onSubmit={handleSubmit} className="space-y-4">
       {error && (
-        <div className="bg-red-50 border border-red-500 rounded-lg p-4 flex items-start gap-3">
-          <svg className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+        <div className="bg-[#FFF1F2] border-2 border-[#FCA5A5] rounded-xl p-4 flex items-start gap-3">
+          <svg className="w-5 h-5 text-[#DC2626] flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
             <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
           </svg>
           <div className="flex-1">
-            <p className="text-sm text-gray-900">{error}</p>
+            <p className="text-sm font-semibold text-[#111827] mb-1">
+              {showResendOption ? 'Аккаунт уже существует' : 'Ошибка'}
+            </p>
+            <p className="text-sm text-[#111827]">
+              {showResendOption 
+                ? 'Войдите или повторно отправьте письмо подтверждения.'
+                : error}
+            </p>
             {showResendOption && (
-              <div className="mt-3 flex gap-2">
+              <div className="mt-3 flex gap-3">
                 <button
                   type="button"
                   onClick={handleSwitchToLogin}
-                  className="text-sm font-medium text-lime hover:text-lime-dark transition-colors"
+                  className="text-sm font-semibold text-[#111827] hover:text-[#374151] transition-colors px-4 py-2 bg-white rounded-lg border border-gray-300 hover:border-gray-400"
                 >
                   Перейти ко входу
                 </button>
-                <span className="text-gray-400">•</span>
                 <button
                   type="button"
                   onClick={handleResendVerification}
                   disabled={isLoading || resendCooldown > 0}
-                  className="text-sm font-medium text-lime hover:text-lime-dark transition-colors disabled:opacity-50"
+                  className="text-sm font-semibold text-[#111827] hover:text-[#374151] transition-colors px-4 py-2 bg-white rounded-lg border border-gray-300 hover:border-gray-400 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {resendCooldown > 0 
                     ? `Отправить через ${resendCooldown}с` 
@@ -224,7 +230,7 @@ export function SignupForm({ onSignupSuccess, switchToLogin }: SignupFormProps) 
         />
       </div>
 
-      <Button type="submit" isLoading={isLoading} className="w-full mt-6">
+      <Button type="submit" isLoading={isLoading} className="w-full mt-5">
         {isLoading ? 'Создаём аккаунт...' : 'Создать аккаунт'}
       </Button>
     </form>

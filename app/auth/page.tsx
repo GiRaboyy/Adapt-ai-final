@@ -19,14 +19,14 @@ function LogoMark() {
 function LeftPanel() {
   return (
     <div className="hidden lg:flex lg:w-[48%] bg-dark-bg relative overflow-hidden noise-overlay">
-      <div className="relative z-10 flex flex-col justify-between h-full p-12">
-        {/* Logo at top left */}
-        <div className="pt-4">
+      <div className="relative z-10 flex flex-col justify-center items-start h-full px-12 py-16">
+        {/* Logo at top - absolute positioned */}
+        <div className="absolute top-8 left-12">
           <LogoMark />
         </div>
         
-        {/* Text block anchored at bottom left with generous spacing */}
-        <div className="space-y-6 max-w-xl pb-16">
+        {/* Text block - vertically centered */}
+        <div className="space-y-6 max-w-xl">
           <h1 className="font-display text-[56px] xl:text-[64px] font-extrabold text-white leading-[1.05] tracking-[-0.02em]">
             Обучайте<br />сотрудников<br />быстрее с Adapt
           </h1>
@@ -224,8 +224,8 @@ function AuthContent() {
 
       {/* Right Panel - Form */}
       <div className="flex-1 flex items-center justify-center p-6 lg:p-12 bg-[#F6F7F9]">
-        <div className="w-full max-w-[480px]">
-          <div className="glass-card rounded-2xl shadow-xl px-10 py-9 space-y-7">
+        <div className="w-full max-w-[460px]">
+          <div className="glass-card rounded-2xl shadow-xl px-8 py-7 space-y-6">
             {/* Mobile Logo */}
             <div className="lg:hidden flex justify-center">
               <LogoMark />
@@ -233,44 +233,49 @@ function AuthContent() {
 
             {/* Error Message */}
             {errorParam && (
-              <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-800 mb-6">
-                <p className="font-medium mb-1">Не удалось войти</p>
-                {errorParam.includes('redirect_uri') || errorParam.includes('mismatch') ? (
-                  <p>Проверьте настройки Google OAuth. В Google Cloud Console добавьте Redirect URI вашего Supabase проекта.</p>
-                ) : (
-                  <p>{decodeURIComponent(errorParam)}</p>
-                )}
+              <div className="bg-[#FFF1F2] border-2 border-[#FCA5A5] rounded-xl p-4 flex items-start gap-3">
+                <svg className="w-5 h-5 text-[#DC2626] flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-[#111827] mb-1">Не удалось войти</p>
+                  {errorParam.includes('redirect_uri') || errorParam.includes('mismatch') ? (
+                    <p className="text-sm text-[#111827]">Проверьте настройки Google OAuth. В Google Cloud Console добавьте Redirect URI вашего Supabase проекта.</p>
+                  ) : (
+                    <p className="text-sm text-[#111827]">{decodeURIComponent(errorParam)}</p>
+                  )}
+                </div>
               </div>
             )}
 
             {/* Tabs */}
-            <div className="flex gap-10 border-b border-gray-200">
+            <div className="flex gap-8 border-b-2 border-gray-100">
               <button
                 onClick={() => setActiveTab('login')}
-                className={`pb-5 text-lg font-semibold transition-colors relative ${
+                className={`pb-4 text-base font-bold transition-colors relative ${
                   activeTab === 'login' ? 'text-gray-900' : 'text-gray-400 hover:text-gray-600'
                 }`}
               >
                 Вход
                 {activeTab === 'login' && (
-                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-lime rounded-full" />
+                  <div className="absolute bottom-0 left-0 right-0 h-[3px] bg-lime rounded-full" />
                 )}
               </button>
               <button
                 onClick={() => setActiveTab('signup')}
-                className={`pb-5 text-lg font-semibold transition-colors relative ${
+                className={`pb-4 text-base font-bold transition-colors relative ${
                   activeTab === 'signup' ? 'text-gray-900' : 'text-gray-400 hover:text-gray-600'
                 }`}
               >
                 Регистрация
                 {activeTab === 'signup' && (
-                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-lime rounded-full" />
+                  <div className="absolute bottom-0 left-0 right-0 h-[3px] bg-lime rounded-full" />
                 )}
               </button>
             </div>
 
             {/* Form */}
-            <div className="space-y-6 pt-2">
+            <div className="space-y-5 pt-1">
               {activeTab === 'login' ? (
                 <LoginForm prefillEmail={prefillEmail} />
               ) : (

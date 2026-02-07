@@ -28,7 +28,7 @@ export function Input({
       {label && (
         <label
           htmlFor={inputId}
-          className="block text-sm font-medium text-gray-900 mb-2"
+          className="block text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide"
         >
           {label}
         </label>
@@ -37,7 +37,7 @@ export function Input({
         <input
           id={inputId}
           type={inputType}
-          className={`w-full h-12 px-4 border rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-lime/50 focus:border-lime transition-all placeholder:text-gray-400 ${
+          className={`w-full h-11 px-4 text-sm border-2 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-lime/50 focus:border-lime transition-all placeholder:text-gray-400 ${
             error
               ? 'border-red-300 focus:ring-red-200 focus:border-red-500'
               : 'border-gray-200'
