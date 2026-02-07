@@ -1,10 +1,11 @@
 import { createClient } from '@/lib/supabase/server';
+import { createClient as createServiceClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 
 /**
  * POST /api/profile/role
  * Updates the user's role in their profile
- * Creates profile if it doesn't exist (upsert)
+ * Uses service role key to bypass RLS
  */
 export async function POST(request: NextRequest) {
   try {
@@ -20,7 +21,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create Supabase client with user session
+    // Create Supabase client with user session to get current user
     const supabase = await createClient();
 
     // Get current user
@@ -34,8 +35,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Create admin client with service role key to bypass RLS
+    const supabaseAdmin = createServiceClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+        },
+      }
+    );
+
     // Check if profile exists
-    const { data: existingProfile } = await supabase
+    const { data: existingProfile } = await supabaseAdmin
       .from('profiles')
       .select('id')
       .eq('id', user.id)
@@ -45,15 +58,16 @@ export async function POST(request: NextRequest) {
     
     if (existingProfile) {
       // Profile exists - update it
-      const { data, error } = await (supabase.from('profiles') as ReturnType<typeof supabase.from>)
+      result = await supabaseAdmin
+        .from('profiles')
         .update({ role })
         .eq('id', user.id)
         .select()
         .single();
-      result = { data, error };
     } else {
       // Profile doesn't exist - create it
-      const { data, error } = await (supabase.from('profiles') as ReturnType<typeof supabase.from>)
+      result = await supabaseAdmin
+        .from('profiles')
         .insert({
           id: user.id,
           email: user.email || null,
@@ -63,7 +77,6 @@ export async function POST(request: NextRequest) {
         })
         .select()
         .single();
-      result = { data, error };
     }
 
     if (result.error) {
