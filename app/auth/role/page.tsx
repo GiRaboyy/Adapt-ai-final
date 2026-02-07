@@ -94,7 +94,7 @@ export default function RoleSelectionPage() {
   }, [checkAuth]);
 
   const handleContinue = async () => {
-    if (!selectedRole || !userId) {
+    if (!selectedRole) {
       setError('Пожалуйста, выберите роль');
       return;
     }
@@ -103,9 +103,9 @@ export default function RoleSelectionPage() {
     setError('');
 
     try {
-      // Use API endpoint to update role (bypasses RLS)
-      const response = await fetch(`/api/profiles/${userId}`, {
-        method: 'PATCH',
+      // Call Next.js API route to save role
+      const response = await fetch('/api/profile/role', {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ role: selectedRole }),
       });
@@ -121,17 +121,33 @@ export default function RoleSelectionPage() {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        console.error('Role update error:', errorData);
+        console.error('Role save error:', {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorData,
+        });
+        
+        // Show detailed error in console for debugging
+        if (errorData.details) {
+          console.error('Error details:', errorData.details);
+        }
+        if (errorData.code) {
+          console.error('Error code:', errorData.code);
+        }
+        
         setError('Не удалось сохранить роль. Попробуйте ещё раз.');
         setIsLoading(false);
         return;
       }
 
+      const result = await response.json();
+      console.log('Role saved successfully:', result);
+
       // Success - redirect to dashboard
       router.push('/dashboard');
       router.refresh();
     } catch (err) {
-      console.error('Role update error:', err);
+      console.error('Unexpected error during role save:', err);
       setError('Произошла ошибка. Попробуйте ещё раз.');
       setIsLoading(false);
     }
