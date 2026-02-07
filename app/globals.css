@@ -62,7 +62,7 @@
 
 /* Font display class */
 .font-display {
-  font-family: var(--font-space-grotesk), system-ui, sans-serif;
+  font-family: var(--font-tt), system-ui, -apple-system, 'Segoe UI', Arial, sans-serif;
 }
 
 .font-sans {

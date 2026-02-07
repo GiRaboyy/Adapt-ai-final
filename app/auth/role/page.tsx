@@ -16,28 +16,33 @@ function LogoMark() {
 function LeftPanel() {
   return (
     <div className="hidden lg:flex lg:w-[48%] bg-dark-bg relative overflow-hidden noise-overlay">
+      {/* Animated gradient blobs */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] rounded-full bg-gradient-to-br from-lime/30 via-green-500/15 to-transparent animate-float" />
+        <div className="absolute bottom-1/3 right-1/4 w-[400px] h-[400px] rounded-full bg-gradient-to-tr from-emerald-400/15 via-lime/10 to-transparent animate-float-slow" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[650px] h-[450px] rounded-full bg-lime/6 blur-[120px]" />
+      </div>
+
       <div className="relative z-10 flex flex-col justify-between h-full p-12">
         {/* Logo at top left */}
         <div className="pt-4">
           <LogoMark />
         </div>
         
-        {/* Text block anchored at bottom left with generous spacing */}
-        <div className="space-y-6 max-w-xl pb-16">
-          <h1 className="font-display text-[56px] xl:text-[64px] font-extrabold text-white leading-[1.05] tracking-[-0.02em]">
-            Последний<br />шаг
-          </h1>
-          <p className="text-gray-400 text-lg xl:text-xl leading-relaxed max-w-[520px] opacity-80">
-            Выберите роль для настройки интерфейса
-          </p>
+        {/* Text block centered vertically */}
+        <div className="flex-1 flex items-center">
+          <div className="space-y-6 max-w-xl">
+            <h1 className="font-display text-[56px] xl:text-[68px] font-bold text-white leading-[1.1] tracking-[-0.03em]">
+              Последний шаг
+            </h1>
+            <p className="text-gray-400 text-xl xl:text-[22px] leading-relaxed max-w-[500px]">
+              Выберите роль — и мы настроим интерфейс под ваши задачи.
+            </p>
+          </div>
         </div>
-      </div>
 
-      {/* Animated gradient blobs */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] rounded-full bg-gradient-to-br from-lime/35 via-green-500/20 to-transparent animate-float" />
-        <div className="absolute bottom-1/3 right-1/4 w-[400px] h-[400px] rounded-full bg-gradient-to-tr from-emerald-400/18 via-lime/12 to-transparent animate-float-slow" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[400px] rounded-full bg-lime/5 blur-[100px]" />
+        {/* Bottom spacing */}
+        <div className="h-16" />
       </div>
     </div>
   );
@@ -170,21 +175,21 @@ export default function RoleSelectionPage() {
         
         <div className="flex-1 flex items-center justify-center p-6 lg:p-12 bg-[#F6F7F9]">
           <div className="w-full max-w-md">
-            <div className="glass-card rounded-2xl shadow-xl px-10 py-12 text-center">
+            <div className="glass-card rounded-2xl shadow-xl px-8 py-10 text-center">
               <div className="lg:hidden flex justify-center mb-6">
                 <LogoMark />
               </div>
 
-              <div className="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                <svg className="w-8 h-8 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-5">
+                <svg className="w-8 h-8 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
               </div>
 
-              <h1 className="font-display text-2xl font-bold text-gray-900 mb-3">
+              <h1 className="font-display text-2xl font-bold text-gray-900 mb-2">
                 Сессия не найдена
               </h1>
-              <p className="text-gray-600 mb-8">
+              <p className="text-gray-600 mb-7">
                 Для выбора роли необходимо войти в систему
               </p>
 
@@ -205,45 +210,45 @@ export default function RoleSelectionPage() {
       {/* Right Panel - Form */}
       <div className="flex-1 flex items-center justify-center p-6 lg:p-12 bg-[#F6F7F9]">
         <div className="w-full max-w-xl">
-          <div className="glass-card rounded-2xl shadow-xl px-10 py-12">
+          <div className="glass-card rounded-2xl shadow-xl px-8 py-10">
             {/* Mobile Logo */}
-            <div className="lg:hidden flex justify-center mb-8">
+            <div className="lg:hidden flex justify-center mb-6">
               <LogoMark />
             </div>
 
             {/* Header */}
-            <div className="text-center mb-10">
-              <h1 className="font-display text-3xl font-extrabold text-gray-900 mb-3">
+            <div className="text-center mb-8">
+              <h1 className="font-display text-3xl font-bold text-gray-900 mb-2">
                 Выберите вашу роль
               </h1>
-              <p className="text-gray-600 text-lg">
-                Это поможет настроить интерфейс под ваши задачи
+              <p className="text-gray-500 text-base">
+                Это займёт 5 секунд
               </p>
             </div>
 
             {/* Error */}
             {error && (
-              <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-800 mb-6">
+              <div className="bg-red-50 border-2 border-red-300 rounded-xl p-4 text-sm text-red-900 font-medium mb-6">
                 {error}
               </div>
             )}
 
             {/* Role Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
               <button
                 type="button"
                 onClick={() => setSelectedRole('curator')}
                 disabled={isLoading}
-                className={`p-8 border-2 rounded-2xl text-left transition-all ${
+                className={`p-6 border-2 rounded-xl text-left transition-all min-h-[140px] flex flex-col ${
                   selectedRole === 'curator'
                     ? 'border-lime bg-lime/5 shadow-lg'
                     : 'border-gray-200 hover:border-gray-300 hover:shadow-md'
                 } disabled:opacity-50`}
               >
-                <div className="text-5xl mb-4">💼</div>
-                <h3 className="font-display font-bold text-xl mb-2">Куратор</h3>
-                <p className="text-sm text-gray-600 leading-relaxed">
-                  Создавайте курсы на основе базы знаний компании и отслеживайте прогресс сотрудников
+                <div className="text-4xl mb-3">💼</div>
+                <h3 className="font-display font-bold text-lg mb-1.5">Куратор</h3>
+                <p className="text-sm text-gray-600 leading-snug">
+                  Создаёт курсы и смотрит прогресс
                 </p>
               </button>
 
@@ -251,16 +256,16 @@ export default function RoleSelectionPage() {
                 type="button"
                 onClick={() => setSelectedRole('employee')}
                 disabled={isLoading}
-                className={`p-8 border-2 rounded-2xl text-left transition-all ${
+                className={`p-6 border-2 rounded-xl text-left transition-all min-h-[140px] flex flex-col ${
                   selectedRole === 'employee'
                     ? 'border-lime bg-lime/5 shadow-lg'
                     : 'border-gray-200 hover:border-gray-300 hover:shadow-md'
                 } disabled:opacity-50`}
               >
-                <div className="text-5xl mb-4">👤</div>
-                <h3 className="font-display font-bold text-xl mb-2">Сотрудник</h3>
-                <p className="text-sm text-gray-600 leading-relaxed">
-                  Проходите обучающие курсы и развивайте свои навыки с помощью ИИ-ассистента
+                <div className="text-4xl mb-3">👤</div>
+                <h3 className="font-display font-bold text-lg mb-1.5">Сотрудник</h3>
+                <p className="text-sm text-gray-600 leading-snug">
+                  Проходит обучение и отвечает на вопросы
                 </p>
               </button>
             </div>
@@ -270,7 +275,7 @@ export default function RoleSelectionPage() {
               onClick={handleContinue}
               disabled={!selectedRole || isLoading}
               isLoading={isLoading}
-              className="w-full"
+              className="w-full h-12"
             >
               {isLoading ? 'Сохраняем...' : 'Продолжить'}
             </Button>

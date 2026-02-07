@@ -18,10 +18,10 @@ export function Button({
   className = '',
   ...props
 }: ButtonProps) {
-  const baseClasses = 'h-12 px-6 rounded-[14px] font-bold text-base transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed';
+  const baseClasses = 'h-12 px-6 rounded-2xl font-semibold text-base transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed';
   
   const variantClasses = {
-    primary: 'bg-lime text-gray-900 hover:bg-lime-dark focus:ring-lime/50',
+    primary: 'bg-lime text-gray-900 hover:bg-lime-dark focus:ring-lime/50 shadow-sm hover:shadow-md',
     secondary: 'bg-white text-gray-900 border border-gray-200 hover:bg-gray-50 focus:ring-gray-300',
   };
 
