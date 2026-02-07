@@ -61,9 +61,26 @@ export function LoginForm({ prefillEmail = '' }: LoginFormProps) {
         return;
       }
 
-      // Success - redirect to dashboard
-      router.push('/dashboard');
-      router.refresh();
+      // Check if user has a role - redirect accordingly
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', user.id)
+          .maybeSingle();
+
+        const profile = profileData as { role: string | null } | null;
+
+        if (!profile || !profile.role) {
+          // No role set - redirect to role selection
+          router.push('/auth/role');
+        } else {
+          // Has role - redirect to dashboard
+          router.push('/dashboard');
+        }
+        router.refresh();
+      }
     } catch (err) {
       setError('Произошла ошибка. Попробуйте ещё раз.');
       setIsLoading(false);
@@ -107,6 +124,7 @@ export function LoginForm({ prefillEmail = '' }: LoginFormProps) {
       <div className="text-right">
         <button
           type="button"
+          onClick={() => router.push('/auth/forgot')}
           className="text-sm text-gray-600 hover:text-gray-900"
           disabled={isLoading}
         >

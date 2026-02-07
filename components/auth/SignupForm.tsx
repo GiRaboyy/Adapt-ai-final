@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Input } from '../ui/Input';
 import { Button } from '../ui/Button';
 import { createClient } from '@/lib/supabase/client';
@@ -19,10 +19,19 @@ export function SignupForm({ onSignupSuccess, switchToLogin }: SignupFormProps) 
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showResendOption, setShowResendOption] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
 
   const validateEmail = (email: string) => {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   };
+
+  // Countdown timer for resend cooldown
+  useEffect(() => {
+    if (resendCooldown > 0) {
+      const timer = setTimeout(() => setResendCooldown(resendCooldown - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [resendCooldown]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -100,6 +109,8 @@ export function SignupForm({ onSignupSuccess, switchToLogin }: SignupFormProps) 
   };
 
   const handleResendVerification = async () => {
+    if (resendCooldown > 0) return;
+    
     setIsLoading(true);
     setError('');
     try {
@@ -115,7 +126,8 @@ export function SignupForm({ onSignupSuccess, switchToLogin }: SignupFormProps) 
       if (resendError) {
         setError(resendError.message);
       } else {
-        // Success - show verify screen
+        // Success - show verify screen and start cooldown
+        setResendCooldown(60);
         if (onSignupSuccess) {
           onSignupSuccess(email);
         }
@@ -154,10 +166,12 @@ export function SignupForm({ onSignupSuccess, switchToLogin }: SignupFormProps) 
                 <button
                   type="button"
                   onClick={handleResendVerification}
-                  disabled={isLoading}
+                  disabled={isLoading || resendCooldown > 0}
                   className="text-sm font-medium text-lime hover:text-lime-dark transition-colors disabled:opacity-50"
                 >
-                  Отправить письмо ещё раз
+                  {resendCooldown > 0 
+                    ? `Отправить через ${resendCooldown}с` 
+                    : 'Отправить письмо ещё раз'}
                 </button>
               </div>
             )}

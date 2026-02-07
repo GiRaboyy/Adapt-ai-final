@@ -585,15 +585,58 @@ https://your-domain.vercel.app/auth/callback
 ### Auth Features
 
 - ✅ Email/password signup with email confirmation
-- ✅ Email/password login
+- ✅ Email/password login with role-based redirection
 - ✅ Google OAuth authentication
-- ✅ Role selection during signup (Curator/Employee)
-- ✅ Default role to "curator" for OAuth users
-- ✅ Email verification with resend capability
+- ✅ Role selection after email confirmation (Curator/Employee)
+- ✅ Forgot password flow with email reset link
+- ✅ Email verification with resend capability (60s cooldown)
 - ✅ Protected routes with middleware
-- ✅ Role-based dashboard content
+- ✅ Role-based dashboard access
 - ✅ Session management with httpOnly cookies
-- ✅ Profile creation via Python API (bypasses RLS)
+- ✅ Profile creation via server-side callback (bypasses RLS)
+- ✅ No client-side API dependencies in auth flow
+
+### Auth Flow Architecture
+
+**Signup Flow:**
+1. User submits signup form with email/password
+2. Supabase sends confirmation email
+3. User clicks email link → redirects to `/auth/callback`
+4. Callback route (server-side):
+   - Exchanges code for session
+   - Creates/updates profile in database (server-side with service role)
+   - Checks if user has role
+   - Redirects to `/auth/role` if no role, or `/dashboard` if role exists
+5. User selects role (Curator/Employee) on `/auth/role`
+6. Redirects to `/dashboard`
+
+**Login Flow:**
+1. User submits login form
+2. After successful authentication:
+   - Checks user's role from profiles table
+   - Redirects to `/auth/role` if no role set
+   - Redirects to `/dashboard` if role exists
+
+**Google OAuth Flow:**
+1. User clicks "Continue with Google"
+2. Redirects to Google for authentication
+3. Google redirects to Supabase callback
+4. Supabase redirects to `/auth/callback`
+5. Same flow as email signup (creates profile, checks role, redirects)
+
+**Forgot Password Flow:**
+1. User clicks "Forgot password?" on login page
+2. Enters email on `/auth/forgot`
+3. Receives reset link via email
+4. Clicks link → redirects to `/auth/reset`
+5. Sets new password
+6. Redirects to `/dashboard`
+
+**Key Design Principles:**
+- No redirect loops: `/auth/callback` and `/auth/role` are never blocked by middleware
+- Server-side profile creation: No client-side API calls during auth
+- Role selection happens AFTER email confirmation, not during signup
+- Middleware checks role for protected routes and redirects to `/auth/role` if needed
 
 ### Troubleshooting Auth Issues
 
