@@ -18,11 +18,11 @@ export function Button({
   className = '',
   ...props
 }: ButtonProps) {
-  const baseClasses = 'px-6 py-3 rounded-lg font-semibold transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed';
+  const baseClasses = 'h-12 px-6 rounded-xl font-semibold transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed';
   
   const variantClasses = {
-    primary: 'bg-[#C8F65D] text-black hover:bg-[#b5e34a] focus:ring-[#C8F65D]',
-    secondary: 'bg-white text-black border border-gray-200 hover:bg-gray-50 focus:ring-gray-300',
+    primary: 'bg-lime text-gray-900 hover:bg-lime-dark focus:ring-lime/50',
+    secondary: 'bg-white text-gray-900 border border-gray-200 hover:bg-gray-50 focus:ring-gray-300',
   };
 
   return (

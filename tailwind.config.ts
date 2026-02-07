@@ -7,7 +7,22 @@ const config: Config = {
     './app/**/*.{js,ts,jsx,tsx,mdx}',
   ],
   theme: {
-    extend: {},
+    extend: {
+      fontFamily: {
+        sans: ['var(--font-inter)', 'system-ui', 'sans-serif'],
+        display: ['var(--font-space-grotesk)', 'system-ui', 'sans-serif'],
+      },
+      colors: {
+        lime: {
+          DEFAULT: '#C8F65D',
+          dark: '#B5E34A',
+        },
+        dark: {
+          bg: '#070A07',
+          card: '#0B0F0C',
+        },
+      },
+    },
   },
   plugins: [],
 }

@@ -489,274 +489,110 @@ Before using authentication locally or in production, configure Supabase Auth se
 3. Enable "Confirm email" option
 4. Customize email templates (optional)
 
-#### 2. Enable Google OAuth (Optional)
+#### 2. Enable Google OAuth
 
-1. Enable "Google" provider in Supabase Dashboard
-2. Create Google Cloud OAuth credentials:
-   - Go to [Google Cloud Console](https://console.cloud.google.com)
-   - Create new project or select existing
-   - Enable Google+ API
-   - Create OAuth 2.0 Client ID (Web application)
-   - Add authorized redirect URI: `https://[your-project-ref].supabase.co/auth/v1/callback`
-   - Copy Client ID and Secret to Supabase
-3. Test OAuth flow after setup
+**IMPORTANT:** To fix the `redirect_uri_mismatch` error, follow these steps carefully:
 
-#### 3. Configure Redirect URLs
+**Step 1: Create Google Cloud OAuth Credentials**
 
-Add the following URLs to Authentication → URL Configuration → Redirect URLs:
+1. Go to [Google Cloud Console](https://console.cloud.google.com)
+2. Create new project or select existing
+3. Navigate to APIs & Services → Credentials
+4. Create OAuth 2.0 Client ID (Web application)
 
-**Local development:**
+**Step 2: Configure Authorized Redirect URI in Google Cloud**
+
+> This is the critical step! Google OAuth redirects to **Supabase**, not your app directly.
+
+1. In OAuth 2.0 Client ID settings, add this Authorized redirect URI:
+
+```
+https://<PROJECT_REF>.supabase.co/auth/v1/callback
+```
+
+Replace `<PROJECT_REF>` with your Supabase project reference ID.
+Find it in your Supabase project URL: `https://app.supabase.com/project/<PROJECT_REF>`
+
+**Example:** If your project URL is `https://app.supabase.com/project/suicubrscstxnniaraxh`, add:
+```
+https://suicubrscstxnniaraxh.supabase.co/auth/v1/callback
+```
+
+2. (Optional) Also add with trailing slash:
+```
+https://<PROJECT_REF>.supabase.co/auth/v1/callback/
+```
+
+3. Save changes.
+
+**Step 3: Configure Supabase**
+
+1. Go to Supabase Dashboard → Authentication → Providers → Google
+2. Enable Google provider
+3. Paste your Google Client ID and Client Secret
+4. Save
+
+**Step 4: Configure Supabase Redirect URLs**
+
+Go to Authentication → URL Configuration:
+
+1. Set **Site URL** to your production domain:
+```
+https://your-domain.vercel.app
+```
+
+2. Add **Redirect URLs** (these are where Supabase redirects after auth):
 ```
 http://localhost:3000/auth/callback
+https://your-domain.vercel.app/auth/callback
 ```
 
-**Production:**
-```
-https://your-production-domain.com/auth/callback
-```
+### Quick Checklist for Google OAuth
 
-**Preview deployments (Vercel):**
-```
-https://your-preview-domain.vercel.app/auth/callback
-```
+- [ ] Google Cloud: OAuth 2.0 Client ID created
+- [ ] Google Cloud: Redirect URI = `https://<PROJECT_REF>.supabase.co/auth/v1/callback`
+- [ ] Supabase: Google provider enabled with Client ID/Secret
+- [ ] Supabase: Site URL set to production domain
+- [ ] Supabase: Redirect URLs include `/auth/callback` for all environments
 
-**Important:** Add each preview URL manually or use Vercel's stable preview domain feature.
+### Auth Features
 
-### Environment Variables
-
-Update your `.env.local` with the new app version:
-
-```env
-NEXT_PUBLIC_SUPABASE_URL=https://xxxxx.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key-here
-SUPABASE_URL=https://xxxxx.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key-here
-ENVIRONMENT=local
-GIT_SHA=local-dev
-APP_VERSION=0.2.0
-```
-
-### Apply Auth Migration
-
-Push the auth migration to your Supabase database:
-
-```bash
-supabase db push
-```
-
-This creates the trigger that automatically creates user profiles when someone signs up.
-
-### Testing Auth Flows
-
-#### Email Signup
-
-1. Go to http://localhost:3000/auth
-2. Click "Sign up" tab
-3. Fill in name, email, password, and select role
-4. Submit → You'll see "Check your email"
-5. Open email and click confirmation link
-6. You'll be redirected to dashboard
-
-#### Email Login
-
-1. Go to http://localhost:3000/auth
-2. Enter email and password
-3. Click "Login" → Redirected to dashboard
-
-#### Google Sign In
-
-1. Go to http://localhost:3000/auth
-2. Click "Continue with Google"
-3. Authorize with Google account
-4. If first time: Select your role on onboarding screen
-5. You'll be redirected to dashboard
-
-#### Testing Without Email Confirmation (Development Only)
-
-For faster local testing, you can temporarily disable email confirmations:
-- Supabase Dashboard → Authentication → Settings
-- Disable "Enable email confirmations"
-- Users will be logged in immediately after signup
-
-**Remember to re-enable for production!**
+- ✅ Email/password signup with email confirmation
+- ✅ Email/password login
+- ✅ Google OAuth authentication
+- ✅ Role selection during signup (Curator/Employee)
+- ✅ Default role to "curator" for OAuth users
+- ✅ Email verification with resend capability
+- ✅ Protected routes with middleware
+- ✅ Role-based dashboard content
+- ✅ Session management with httpOnly cookies
+- ✅ Profile creation via Python API (bypasses RLS)
 
 ### Troubleshooting Auth Issues
 
+**`redirect_uri_mismatch` error:**
+
+1. Open browser DevTools → Network tab
+2. Click "Sign in with Google"
+3. Look at the failing request URL → Find `redirect_uri` parameter
+4. Make sure that exact URI is in Google Cloud Console Authorized redirect URIs
+5. Usually it should be: `https://<PROJECT_REF>.supabase.co/auth/v1/callback`
+
 **"Redirect URL not allowed" error:**
-- Check that callback URL is added to Supabase Redirect URLs list
+
+- Check that `/auth/callback` URL is added to Supabase Redirect URLs list
 - Verify URL matches exactly (including http/https and port)
 
-**Google sign-in fails:**
-- Verify Google OAuth credentials in Supabase Dashboard
-- Check that authorized redirect URI is correct in Google Cloud Console
-- Ensure Google+ API is enabled
-
 **Email confirmation not working:**
+
 - Check email confirmations are enabled in Supabase
 - Look for email in spam folder
 - Try resend button after 60 seconds
 
 **Can't access dashboard after login:**
+
 - Check browser console for errors
 - Verify migrations are applied: `supabase db push`
-- Ensure role was selected during signup
-
-### Authentication Features
-
-- ✅ Email/password signup with email confirmation
-- ✅ Email/password login
-- ✅ Google OAuth authentication
-- ✅ Role selection (Curator/Employee)
-- ✅ Email verification with resend capability
-- ✅ Protected routes with middleware
-- ✅ Role-based dashboard content
-- ✅ Session management with httpOnly cookies
-- ✅ Automatic profile creation via database triggers
-
----
-
-**Stage 2 Complete** ✅
-
-Next: Stage 3 - Course Generation & AI Integration
-
-## Stage 2: Authentication & Role Management
-
-Stage 2 adds complete authentication and role-based access control to Adapt.
-
-### Auth Setup
-
-Before using authentication locally or in production, configure Supabase Auth settings:
-
-#### 1. Enable Email Provider
-
-1. Go to Supabase Dashboard → Authentication → Providers
-2. Enable "Email" provider
-3. Enable "Confirm email" option
-4. Customize email templates (optional)
-
-#### 2. Enable Google OAuth (Optional)
-
-1. Enable "Google" provider in Supabase Dashboard
-2. Create Google Cloud OAuth credentials:
-   - Go to [Google Cloud Console](https://console.cloud.google.com)
-   - Create new project or select existing
-   - Enable Google+ API
-   - Create OAuth 2.0 Client ID (Web application)
-   - Add authorized redirect URI: `https://[your-project-ref].supabase.co/auth/v1/callback`
-   - Copy Client ID and Secret to Supabase
-3. Test OAuth flow after setup
-
-#### 3. Configure Redirect URLs
-
-Add the following URLs to Authentication → URL Configuration → Redirect URLs:
-
-**Local development:**
-```
-http://localhost:3000/auth/callback
-```
-
-**Production:**
-```
-https://your-production-domain.com/auth/callback
-```
-
-**Preview deployments (Vercel):**
-```
-https://your-preview-domain.vercel.app/auth/callback
-```
-
-**Important:** Add each preview URL manually or use Vercel's stable preview domain feature.
-
-### Environment Variables
-
-Update your `.env.local` with the new app version:
-
-```env
-NEXT_PUBLIC_SUPABASE_URL=https://xxxxx.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key-here
-SUPABASE_URL=https://xxxxx.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key-here
-ENVIRONMENT=local
-GIT_SHA=local-dev
-APP_VERSION=0.2.0
-```
-
-### Apply Auth Migration
-
-Push the auth migration to your Supabase database:
-
-```bash
-supabase db push
-```
-
-This creates the trigger that automatically creates user profiles when someone signs up.
-
-### Testing Auth Flows
-
-#### Email Signup
-
-1. Go to http://localhost:3000/auth
-2. Click "Sign up" tab
-3. Fill in name, email, password, and select role
-4. Submit → You'll see "Check your email"
-5. Open email and click confirmation link
-6. You'll be redirected to dashboard
-
-#### Email Login
-
-1. Go to http://localhost:3000/auth
-2. Enter email and password
-3. Click "Login" → Redirected to dashboard
-
-#### Google Sign In
-
-1. Go to http://localhost:3000/auth
-2. Click "Continue with Google"
-3. Authorize with Google account
-4. If first time: Select your role on onboarding screen
-5. You'll be redirected to dashboard
-
-#### Testing Without Email Confirmation (Development Only)
-
-For faster local testing, you can temporarily disable email confirmations:
-- Supabase Dashboard → Authentication → Settings
-- Disable "Enable email confirmations"
-- Users will be logged in immediately after signup
-
-**Remember to re-enable for production!**
-
-### Troubleshooting Auth Issues
-
-**"Redirect URL not allowed" error:**
-- Check that callback URL is added to Supabase Redirect URLs list
-- Verify URL matches exactly (including http/https and port)
-
-**Google sign-in fails:**
-- Verify Google OAuth credentials in Supabase Dashboard
-- Check that authorized redirect URI is correct in Google Cloud Console
-- Ensure Google+ API is enabled
-
-**Email confirmation not working:**
-- Check email confirmations are enabled in Supabase
-- Look for email in spam folder
-- Try resend button after 60 seconds
-
-**Can't access dashboard after login:**
-- Check browser console for errors
-- Verify migrations are applied: `supabase db push`
-- Ensure role was selected during signup
-
-### Authentication Features
-
-- ✅ Email/password signup with email confirmation
-- ✅ Email/password login
-- ✅ Google OAuth authentication
-- ✅ Role selection (Curator/Employee)
-- ✅ Email verification with resend capability
-- ✅ Protected routes with middleware
-- ✅ Role-based dashboard content
-- ✅ Session management with httpOnly cookies
-- ✅ Automatic profile creation via database triggers
 
 ---
 

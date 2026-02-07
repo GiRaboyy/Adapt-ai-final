@@ -64,11 +64,12 @@ export async function GET(request: Request) {
     }
 
     // Always ensure profile exists via Python API (bypasses RLS)
+    // Default role to 'curator' if not provided
     const apiUrl = process.env.VERCEL_URL
       ? `https://${process.env.VERCEL_URL}/api/profiles/ensure`
       : `${requestUrl.origin}/api/profiles/ensure`;
 
-    const role = user.user_metadata?.role || null;
+    const role = user.user_metadata?.role || 'curator'; // Always default to curator
 
     try {
       const response = await fetch(apiUrl, {
@@ -78,7 +79,7 @@ export async function GET(request: Request) {
           user_id: user.id,
           email: user.email || null,
           full_name: user.user_metadata?.full_name || user.user_metadata?.name || null,
-          role: role || 'curator', // Default to curator if no role
+          role: role,
         }),
       });
 
@@ -87,14 +88,10 @@ export async function GET(request: Request) {
       }
     } catch (fetchError) {
       console.error('Profile API fetch error:', fetchError);
-      // Don't fail the callback if profile creation fails - user can still proceed
+      // Don't fail the callback if profile creation fails
     }
 
-    // Redirect based on role
-    if (!role) {
-      return NextResponse.redirect(`${requestUrl.origin}/onboarding`);
-    }
-
+    // Always redirect to dashboard - no onboarding
     return NextResponse.redirect(`${requestUrl.origin}/dashboard`);
 
   } catch (err) {

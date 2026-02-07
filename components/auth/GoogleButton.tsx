@@ -28,13 +28,11 @@ export function GoogleButton() {
 
       if (error) {
         console.error('Google sign-in error:', error);
-        alert('Вход через Google временно недоступен. Используйте email/пароль.');
         setIsLoading(false);
       }
       // If successful, user will be redirected to Google
     } catch (err) {
       console.error('Unexpected error:', err);
-      alert('Произошла ошибка. Попробуйте ещё раз.');
       setIsLoading(false);
     }
   };
@@ -44,7 +42,7 @@ export function GoogleButton() {
       type="button"
       onClick={handleGoogleSignIn}
       disabled={isLoading}
-      className="w-full px-6 py-3 bg-white text-black border border-gray-200 rounded-lg font-medium hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-300 focus:ring-offset-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
+      className="w-full h-12 px-6 bg-white text-gray-900 border border-gray-200 rounded-xl font-medium hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-lime/50 focus:ring-offset-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
     >
       {isLoading ? (
         <>

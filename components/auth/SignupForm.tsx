@@ -155,8 +155,8 @@ export function SignupForm({ onSignupSuccess }: SignupFormProps) {
             disabled={isLoading}
             className={`p-5 border-2 rounded-xl text-left transition-all ${
               role === 'curator'
-                ? 'border-[#C8F65D] bg-[#C8F65D] bg-opacity-5'
-                : 'border-gray-200 hover:border-gray-400'
+                ? 'border-lime bg-lime/5'
+                : 'border-gray-200 hover:border-gray-300'
             } disabled:opacity-50`}
           >
             <div className="text-3xl mb-2">💼</div>
@@ -172,8 +172,8 @@ export function SignupForm({ onSignupSuccess }: SignupFormProps) {
             disabled={isLoading}
             className={`p-5 border-2 rounded-xl text-left transition-all ${
               role === 'employee'
-                ? 'border-[#C8F65D] bg-[#C8F65D] bg-opacity-5'
-                : 'border-gray-200 hover:border-gray-400'
+                ? 'border-lime bg-lime/5'
+                : 'border-gray-200 hover:border-gray-300'
             } disabled:opacity-50`}
           >
             <div className="text-3xl mb-2">👤</div>
