@@ -27,12 +27,12 @@ export function LoginForm() {
 
     // Validation
     if (!email || !password) {
-      setError('Please fill in all fields');
+      setError('Пожалуйста, заполните все поля');
       return;
     }
 
     if (!validateEmail(email)) {
-      setError('Please enter a valid email address');
+      setError('Пожалуйста, введите корректный email');
       return;
     }
 
@@ -47,9 +47,9 @@ export function LoginForm() {
 
       if (signInError) {
         if (signInError.message.includes('Email not confirmed')) {
-          setError('Please verify your email before logging in');
+          setError('Подтвердите email перед входом');
         } else {
-          setError('Invalid email or password');
+          setError('Неверный email или пароль');
         }
         setIsLoading(false);
         return;
@@ -59,7 +59,7 @@ export function LoginForm() {
       router.push('/dashboard');
       router.refresh();
     } catch (err) {
-      setError('An unexpected error occurred. Please try again.');
+      setError('Произошла ошибка. Попробуйте ещё раз.');
       setIsLoading(false);
     }
   };
@@ -88,7 +88,7 @@ export function LoginForm() {
       />
 
       <Input
-        label="Password"
+        label="Пароль"
         type="password"
         placeholder="••••••••"
         value={password}
@@ -104,12 +104,12 @@ export function LoginForm() {
           className="text-sm text-gray-600 hover:text-gray-900"
           disabled={isLoading}
         >
-          Forgot password?
+          Забыли пароль?
         </button>
       </div>
 
       <Button type="submit" isLoading={isLoading} className="w-full">
-        {isLoading ? 'Signing in...' : 'Login'}
+        {isLoading ? 'Входим...' : 'Войти'}
       </Button>
     </form>
   );

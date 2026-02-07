@@ -33,22 +33,22 @@ export function SignupForm({ onSignupSuccess }: SignupFormProps) {
 
     // Validation
     if (!fullName || !email || !password || !confirmPassword || !role) {
-      setError('Please fill in all fields and select a role');
+      setError('Заполните все поля и выберите роль');
       return;
     }
 
     if (!validateEmail(email)) {
-      setError('Please enter a valid email address');
+      setError('Введите корректный email');
       return;
     }
 
     if (password.length < 8) {
-      setError('Password must be at least 8 characters');
+      setError('Пароль должен содержать минимум 8 символов');
       return;
     }
 
     if (password !== confirmPassword) {
-      setError('Passwords do not match');
+      setError('Пароли не совпадают');
       return;
     }
 
@@ -70,7 +70,7 @@ export function SignupForm({ onSignupSuccess }: SignupFormProps) {
 
       if (signUpError) {
         if (signUpError.message.includes('already registered')) {
-          setError('An account with this email already exists. Please login.');
+          setError('Аккаунт с таким email уже существует. Войдите в систему.');
         } else {
           setError(signUpError.message);
         }
@@ -83,7 +83,7 @@ export function SignupForm({ onSignupSuccess }: SignupFormProps) {
         onSignupSuccess(email);
       }
     } catch (err) {
-      setError('An unexpected error occurred. Please try again.');
+      setError('Произошла ошибка. Попробуйте ещё раз.');
       setIsLoading(false);
     }
   };
@@ -102,9 +102,9 @@ export function SignupForm({ onSignupSuccess }: SignupFormProps) {
       )}
 
       <Input
-        label="Full Name"
+        label="Имя"
         type="text"
-        placeholder="John Doe"
+        placeholder="Иван Иванов"
         value={fullName}
         onChange={(e) => setFullName(e.target.value)}
         disabled={isLoading}
@@ -122,7 +122,7 @@ export function SignupForm({ onSignupSuccess }: SignupFormProps) {
       />
 
       <Input
-        label="Password"
+        label="Пароль"
         type="password"
         placeholder="••••••••"
         value={password}
@@ -133,7 +133,7 @@ export function SignupForm({ onSignupSuccess }: SignupFormProps) {
       />
 
       <Input
-        label="Confirm Password"
+        label="Повторите пароль"
         type="password"
         placeholder="••••••••"
         value={confirmPassword}
@@ -146,23 +146,23 @@ export function SignupForm({ onSignupSuccess }: SignupFormProps) {
       {/* Role Selector */}
       <div>
         <label className="block text-sm font-medium text-gray-900 mb-3">
-          Select Your Role
+          Выберите роль
         </label>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <button
             type="button"
             onClick={() => setRole('curator')}
             disabled={isLoading}
-            className={`p-6 border-2 rounded-xl text-left transition-all ${
+            className={`p-5 border-2 rounded-xl text-left transition-all ${
               role === 'curator'
                 ? 'border-[#C8F65D] bg-[#C8F65D] bg-opacity-5'
-                : 'border-gray-200 hover:border-gray-600'
+                : 'border-gray-200 hover:border-gray-400'
             } disabled:opacity-50`}
           >
-            <div className="text-4xl mb-3">💼</div>
-            <h3 className="font-semibold text-lg mb-1">Curator</h3>
-            <p className="text-sm text-gray-600">
-              Manage courses and track progress
+            <div className="text-3xl mb-2">💼</div>
+            <h3 className="font-semibold mb-1">Куратор</h3>
+            <p className="text-xs text-gray-600">
+              Создавайте курсы и отслеживайте прогресс
             </p>
           </button>
 
@@ -170,23 +170,23 @@ export function SignupForm({ onSignupSuccess }: SignupFormProps) {
             type="button"
             onClick={() => setRole('employee')}
             disabled={isLoading}
-            className={`p-6 border-2 rounded-xl text-left transition-all ${
+            className={`p-5 border-2 rounded-xl text-left transition-all ${
               role === 'employee'
                 ? 'border-[#C8F65D] bg-[#C8F65D] bg-opacity-5'
-                : 'border-gray-200 hover:border-gray-600'
+                : 'border-gray-200 hover:border-gray-400'
             } disabled:opacity-50`}
           >
-            <div className="text-4xl mb-3">👤</div>
-            <h3 className="font-semibold text-lg mb-1">Employee</h3>
-            <p className="text-sm text-gray-600">
-              Complete training courses
+            <div className="text-3xl mb-2">👤</div>
+            <h3 className="font-semibold mb-1">Сотрудник</h3>
+            <p className="text-xs text-gray-600">
+              Проходите обучающие курсы
             </p>
           </button>
         </div>
       </div>
 
       <Button type="submit" isLoading={isLoading} className="w-full">
-        {isLoading ? 'Creating account...' : 'Create account'}
+        {isLoading ? 'Создаём аккаунт...' : 'Создать аккаунт'}
       </Button>
     </form>
   );

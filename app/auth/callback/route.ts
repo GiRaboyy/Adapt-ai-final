@@ -1,9 +1,10 @@
 /**
- * OAuth callback handler
- * Exchanges authorization code for session and redirects based on profile state
+ * OAuth/Email callback handler
+ * Exchanges authorization code for session and creates/updates profile
  */
 
-import { createClient } from '@/lib/supabase/server';
+import { createServerClient, type CookieOptions } from '@supabase/ssr';
+import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 
 export async function GET(request: Request) {
@@ -16,7 +17,7 @@ export async function GET(request: Request) {
   if (error) {
     console.error('OAuth error:', error, error_description);
     return NextResponse.redirect(
-      `${requestUrl.origin}/auth?error=${encodeURIComponent(error_description || 'Authentication failed')}`
+      `${requestUrl.origin}/auth?error=${encodeURIComponent(error_description || 'Ошибка авторизации')}`
     );
   }
 
@@ -25,16 +26,34 @@ export async function GET(request: Request) {
     return NextResponse.redirect(`${requestUrl.origin}/auth?error=missing_code`);
   }
 
-  const supabase = await createClient();
+  const cookieStore = await cookies();
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) {
+          return cookieStore.get(name)?.value;
+        },
+        set(name: string, value: string, options: CookieOptions) {
+          cookieStore.set({ name, value, ...options });
+        },
+        remove(name: string, options: CookieOptions) {
+          cookieStore.set({ name, value: '', ...options });
+        },
+      },
+    }
+  );
 
   try {
-    // Exchange code for session
+    // Exchange code for session - this sets the cookies
     const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
 
     if (exchangeError) {
       console.error('Code exchange error:', exchangeError);
       return NextResponse.redirect(
-        `${requestUrl.origin}/auth?error=${encodeURIComponent('Authentication failed. Please try again.')}`
+        `${requestUrl.origin}/auth?error=${encodeURIComponent('Ошибка авторизации. Попробуйте снова.')}`
       );
     }
 
@@ -44,60 +63,44 @@ export async function GET(request: Request) {
       return NextResponse.redirect(`${requestUrl.origin}/auth?error=no_user`);
     }
 
-    // Check if profile exists and has role
-    // Use any type to work around Supabase type inference issues
-    const { data: profileData, error: profileError } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .maybeSingle();
+    // Always ensure profile exists via Python API (bypasses RLS)
+    const apiUrl = process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}/api/profiles/ensure`
+      : `${requestUrl.origin}/api/profiles/ensure`;
 
-    const profile = profileData as { role: string } | null;
+    const role = user.user_metadata?.role || null;
 
-    if (profileError) {
-      console.error('Profile fetch error:', profileError);
-      // Don't fail - try to create profile via API
-    }
+    try {
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: user.id,
+          email: user.email || null,
+          full_name: user.user_metadata?.full_name || user.user_metadata?.name || null,
+          role: role || 'curator', // Default to curator if no role
+        }),
+      });
 
-    // If profile doesn't exist, create it via the Python API (bypasses RLS)
-    if (!profile) {
-      try {
-        const apiUrl = process.env.VERCEL_URL 
-          ? `https://${process.env.VERCEL_URL}/api/profiles/ensure`
-          : `${requestUrl.origin}/api/profiles/ensure`;
-        
-        const response = await fetch(apiUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            user_id: user.id,
-            email: user.email || null,
-            full_name: user.user_metadata?.full_name || null,
-            role: user.user_metadata?.role || 'curator',
-          }),
-        });
-
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          console.error('Profile creation API error:', errorData);
-          return NextResponse.redirect(`${requestUrl.origin}/auth?error=profile_creation_failed`);
-        }
-
-        // Profile created successfully - go to dashboard
-        return NextResponse.redirect(`${requestUrl.origin}/dashboard`);
-      } catch (fetchError) {
-        console.error('Profile API fetch error:', fetchError);
-        return NextResponse.redirect(`${requestUrl.origin}/auth?error=profile_creation_failed`);
+      if (!response.ok) {
+        console.error('Profile API error:', await response.text());
       }
+    } catch (fetchError) {
+      console.error('Profile API fetch error:', fetchError);
+      // Don't fail the callback if profile creation fails - user can still proceed
     }
 
-    // All good - redirect to dashboard
+    // Redirect based on role
+    if (!role) {
+      return NextResponse.redirect(`${requestUrl.origin}/onboarding`);
+    }
+
     return NextResponse.redirect(`${requestUrl.origin}/dashboard`);
 
   } catch (err) {
     console.error('Unexpected callback error:', err);
     return NextResponse.redirect(
-      `${requestUrl.origin}/auth?error=${encodeURIComponent('An unexpected error occurred')}`
+      `${requestUrl.origin}/auth?error=${encodeURIComponent('Произошла непредвиденная ошибка')}`
     );
   }
 }

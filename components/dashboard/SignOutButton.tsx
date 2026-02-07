@@ -28,7 +28,7 @@ export function SignOutButton() {
       isLoading={isLoading}
       className="text-sm"
     >
-      Sign out
+      Выйти
     </Button>
   );
 }

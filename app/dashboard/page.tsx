@@ -51,7 +51,7 @@ export default async function DashboardPage() {
             
             <div className="flex items-center gap-4">
               <div className="text-right hidden sm:block">
-                <p className="text-sm font-medium text-gray-900">{profile.full_name || 'User'}</p>
+                <p className="text-sm font-medium text-gray-900">{profile.full_name || 'Пользователь'}</p>
                 <p className="text-xs text-gray-500">{profile.email}</p>
               </div>
               <div className="flex items-center gap-2">
@@ -60,7 +60,7 @@ export default async function DashboardPage() {
                     ? 'bg-[#C8F65D] bg-opacity-20 text-gray-900' 
                     : 'bg-blue-100 text-blue-800'
                 }`}>
-                  {isCurator ? '💼 Curator' : '👤 Employee'}
+                  {isCurator ? '💼 Куратор' : '👤 Сотрудник'}
                 </span>
                 <SignOutButton />
               </div>
@@ -74,12 +74,12 @@ export default async function DashboardPage() {
         {/* Welcome Section */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            Welcome back, {profile.full_name || 'there'}! 👋
+            С возвращением, {profile.full_name || 'друг'}! 👋
           </h1>
           <p className="text-gray-600">
             {isCurator 
-              ? 'Manage your training courses and track employee progress' 
-              : 'Access your assigned courses and track your learning progress'}
+              ? 'Управляйте курсами и отслеживайте прогресс сотрудников' 
+              : 'Проходите назначенные курсы и следите за своим прогрессом'}
           </p>
         </div>
 
@@ -90,35 +90,35 @@ export default async function DashboardPage() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="bg-white rounded-lg shadow p-6">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm font-medium text-gray-600">Total Courses</h3>
+                  <h3 className="text-sm font-medium text-gray-600">Всего курсов</h3>
                   <div className="w-10 h-10 bg-[#C8F65D] bg-opacity-20 rounded-lg flex items-center justify-center">
                     <span className="text-xl">📚</span>
                   </div>
                 </div>
                 <p className="text-3xl font-bold text-gray-900">0</p>
-                <p className="text-sm text-gray-500 mt-1">No courses yet</p>
+                <p className="text-sm text-gray-500 mt-1">Пока нет курсов</p>
               </div>
 
               <div className="bg-white rounded-lg shadow p-6">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm font-medium text-gray-600">Active Employees</h3>
+                  <h3 className="text-sm font-medium text-gray-600">Активных сотрудников</h3>
                   <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
                     <span className="text-xl">👥</span>
                   </div>
                 </div>
                 <p className="text-3xl font-bold text-gray-900">0</p>
-                <p className="text-sm text-gray-500 mt-1">No employees enrolled</p>
+                <p className="text-sm text-gray-500 mt-1">Нет записанных сотрудников</p>
               </div>
 
               <div className="bg-white rounded-lg shadow p-6">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm font-medium text-gray-600">Completion Rate</h3>
+                  <h3 className="text-sm font-medium text-gray-600">Процент завершения</h3>
                   <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
                     <span className="text-xl">📊</span>
                   </div>
                 </div>
-                <p className="text-3xl font-bold text-gray-900">-%</p>
-                <p className="text-sm text-gray-500 mt-1">No data available</p>
+                <p className="text-3xl font-bold text-gray-900">—%</p>
+                <p className="text-sm text-gray-500 mt-1">Нет данных</p>
               </div>
             </div>
 
@@ -128,16 +128,16 @@ export default async function DashboardPage() {
                   <span className="text-4xl">🚀</span>
                 </div>
                 <h2 className="text-2xl font-bold text-gray-900 mb-2">
-                  Course Management Coming Soon
+                  Управление курсами скоро появится
                 </h2>
                 <p className="text-gray-600 mb-6">
-                  Create AI-powered training courses, upload company documents, and track employee progress. These features will be available in Stage 3.
+                  Создавайте ИИ-курсы, загружайте документы компании и отслеживайте прогресс сотрудников. Эти функции появятся в следующем обновлении.
                 </p>
                 <div className="inline-flex items-center gap-2 text-sm text-gray-500">
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                  Stay tuned for updates
+                  Следите за обновлениями
                 </div>
               </div>
             </div>
@@ -148,35 +148,35 @@ export default async function DashboardPage() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="bg-white rounded-lg shadow p-6">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm font-medium text-gray-600">Assigned Courses</h3>
+                  <h3 className="text-sm font-medium text-gray-600">Назначено курсов</h3>
                   <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
                     <span className="text-xl">📚</span>
                   </div>
                 </div>
                 <p className="text-3xl font-bold text-gray-900">0</p>
-                <p className="text-sm text-gray-500 mt-1">No courses assigned</p>
+                <p className="text-sm text-gray-500 mt-1">Пока нет курсов</p>
               </div>
 
               <div className="bg-white rounded-lg shadow p-6">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm font-medium text-gray-600">Completed</h3>
+                  <h3 className="text-sm font-medium text-gray-600">Завершено</h3>
                   <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
                     <span className="text-xl">✅</span>
                   </div>
                 </div>
                 <p className="text-3xl font-bold text-gray-900">0</p>
-                <p className="text-sm text-gray-500 mt-1">Nothing completed yet</p>
+                <p className="text-sm text-gray-500 mt-1">Пока ничего не завершено</p>
               </div>
 
               <div className="bg-white rounded-lg shadow p-6">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm font-medium text-gray-600">Your Progress</h3>
+                  <h3 className="text-sm font-medium text-gray-600">Ваш прогресс</h3>
                   <div className="w-10 h-10 bg-[#C8F65D] bg-opacity-20 rounded-lg flex items-center justify-center">
                     <span className="text-xl">🎯</span>
                   </div>
                 </div>
                 <p className="text-3xl font-bold text-gray-900">0%</p>
-                <p className="text-sm text-gray-500 mt-1">Start learning today</p>
+                <p className="text-sm text-gray-500 mt-1">Начните обучение</p>
               </div>
             </div>
 
@@ -186,16 +186,16 @@ export default async function DashboardPage() {
                   <span className="text-4xl">📖</span>
                 </div>
                 <h2 className="text-2xl font-bold text-gray-900 mb-2">
-                  Your Courses Will Appear Here
+                  Ваши курсы появятся здесь
                 </h2>
                 <p className="text-gray-600 mb-6">
-                  Once your curator assigns training courses to you, they&apos;ll show up here. You&apos;ll be able to complete interactive quizzes and track your progress.
+                  Когда куратор назначит вам курсы, они появятся здесь. Вы сможете проходить интерактивные тесты и отслеживать свой прогресс.
                 </p>
                 <div className="inline-flex items-center gap-2 text-sm text-gray-500">
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                  Check back soon
+                  Загляните позже
                 </div>
               </div>
             </div>
