@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, Suspense, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { LoginForm } from '@/components/auth/LoginForm';
 import { SignupForm } from '@/components/auth/SignupForm';
@@ -18,22 +18,22 @@ function LogoMark() {
 
 function LeftPanel() {
   return (
-    <div className="hidden lg:flex lg:w-[48%] bg-dark-bg relative overflow-hidden p-10 noise-overlay">
-      <div className="relative z-10 flex flex-col justify-between h-full">
-        <LogoMark />
+    <div className="hidden lg:flex lg:w-[48%] bg-dark-bg relative overflow-hidden noise-overlay">
+      <div className="relative z-10 flex flex-col justify-between h-full p-12">
+        {/* Logo at top left */}
+        <div className="pt-4">
+          <LogoMark />
+        </div>
         
-        <div className="space-y-6 max-w-lg">
-          <h1 className="font-display text-5xl xl:text-6xl font-bold text-white leading-[1.1] tracking-tight">
+        {/* Text block anchored at bottom left with generous spacing */}
+        <div className="space-y-6 max-w-xl pb-16">
+          <h1 className="font-display text-[56px] xl:text-[64px] font-extrabold text-white leading-[1.05] tracking-[-0.02em]">
             Обучайте<br />сотрудников<br />быстрее с Adapt
           </h1>
-          <p className="text-gray-400 text-lg xl:text-xl leading-relaxed">
+          <p className="text-gray-400 text-lg xl:text-xl leading-relaxed max-w-[520px] opacity-80">
             ИИ-курсы на основе базы знаний вашей компании
           </p>
         </div>
-
-        <p className="text-gray-600 text-sm">
-          Онбординг, аттестации и тренировки продаж — за часы, а не недели.
-        </p>
       </div>
 
       {/* Animated gradient blobs */}
@@ -54,9 +54,30 @@ function AuthContent() {
   const [countdown, setCountdown] = useState(60);
   const [isResending, setIsResending] = useState(false);
   const [resendSuccess, setResendSuccess] = useState(false);
+  const [prefillEmail, setPrefillEmail] = useState('');
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [checkingAuth, setCheckingAuth] = useState(true);
 
   // Check for error in URL
   const errorParam = searchParams.get('error');
+
+  // Check if user is already logged in
+  const checkAuth = useCallback(async () => {
+    try {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        setIsLoggedIn(true);
+      }
+    } catch (err) {
+      console.error('Auth check error:', err);
+    }
+    setCheckingAuth(false);
+  }, []);
+
+  useEffect(() => {
+    checkAuth();
+  }, [checkAuth]);
 
   useEffect(() => {
     if (verifyEmail && countdown > 0) {
@@ -68,6 +89,11 @@ function AuthContent() {
   const handleSignupSuccess = (email: string) => {
     localStorage.setItem('verify_email', email);
     router.push('/auth/verify');
+  };
+
+  const handleSwitchToLogin = (email: string) => {
+    setPrefillEmail(email);
+    setActiveTab('login');
   };
 
   const handleResendEmail = async () => {
@@ -90,6 +116,51 @@ function AuthContent() {
   };
 
   const formatTime = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
+
+  // Show loading while checking auth
+  if (checkingAuth) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#F6F7F9]">
+        <div className="animate-spin h-8 w-8 border-4 border-lime border-t-transparent rounded-full" />
+      </div>
+    );
+  }
+
+  // Already logged in view
+  if (isLoggedIn) {
+    return (
+      <div className="min-h-screen flex flex-col lg:flex-row">
+        <LeftPanel />
+
+        <div className="flex-1 flex items-center justify-center p-6 lg:p-12 bg-[#F6F7F9]">
+          <div className="w-full max-w-md">
+            <div className="glass-card rounded-2xl shadow-xl p-10 text-center space-y-6">
+              <div className="lg:hidden flex justify-center mb-4">
+                <LogoMark />
+              </div>
+
+              <div className="flex justify-center">
+                <div className="w-16 h-16 bg-lime/10 rounded-full flex items-center justify-center">
+                  <svg className="w-8 h-8 text-lime" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <h1 className="font-display text-2xl font-bold text-gray-900">Вы уже вошли</h1>
+                <p className="text-gray-600">Вы уже авторизованы в системе</p>
+              </div>
+
+              <Button onClick={() => router.push('/dashboard')} variant="primary" className="w-full">
+                Перейти в кабинет
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // Email verification view
   if (verifyEmail) {
@@ -153,8 +224,8 @@ function AuthContent() {
 
       {/* Right Panel - Form */}
       <div className="flex-1 flex items-center justify-center p-6 lg:p-12 bg-[#F6F7F9]">
-        <div className="w-full max-w-[460px]">
-          <div className="glass-card rounded-2xl shadow-xl p-8 lg:p-10 space-y-8">
+        <div className="w-full max-w-[480px]">
+          <div className="glass-card rounded-2xl shadow-xl px-10 py-9 space-y-7">
             {/* Mobile Logo */}
             <div className="lg:hidden flex justify-center">
               <LogoMark />
@@ -162,7 +233,7 @@ function AuthContent() {
 
             {/* Error Message */}
             {errorParam && (
-              <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-800">
+              <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-800 mb-6">
                 <p className="font-medium mb-1">Не удалось войти</p>
                 {errorParam.includes('redirect_uri') || errorParam.includes('mismatch') ? (
                   <p>Проверьте настройки Google OAuth. В Google Cloud Console добавьте Redirect URI вашего Supabase проекта.</p>
@@ -173,10 +244,10 @@ function AuthContent() {
             )}
 
             {/* Tabs */}
-            <div className="flex gap-8 border-b border-gray-200">
+            <div className="flex gap-10 border-b border-gray-200">
               <button
                 onClick={() => setActiveTab('login')}
-                className={`pb-4 text-lg font-semibold transition-colors relative ${
+                className={`pb-5 text-lg font-semibold transition-colors relative ${
                   activeTab === 'login' ? 'text-gray-900' : 'text-gray-400 hover:text-gray-600'
                 }`}
               >
@@ -187,7 +258,7 @@ function AuthContent() {
               </button>
               <button
                 onClick={() => setActiveTab('signup')}
-                className={`pb-4 text-lg font-semibold transition-colors relative ${
+                className={`pb-5 text-lg font-semibold transition-colors relative ${
                   activeTab === 'signup' ? 'text-gray-900' : 'text-gray-400 hover:text-gray-600'
                 }`}
               >
@@ -199,15 +270,15 @@ function AuthContent() {
             </div>
 
             {/* Form */}
-            <div className="space-y-6">
+            <div className="space-y-6 pt-2">
               {activeTab === 'login' ? (
-                <LoginForm />
+                <LoginForm prefillEmail={prefillEmail} />
               ) : (
-                <SignupForm onSignupSuccess={handleSignupSuccess} />
+                <SignupForm onSignupSuccess={handleSignupSuccess} switchToLogin={handleSwitchToLogin} />
               )}
 
               {/* Divider */}
-              <div className="relative">
+              <div className="relative py-2">
                 <div className="absolute inset-0 flex items-center">
                   <div className="w-full border-t border-gray-200" />
                 </div>

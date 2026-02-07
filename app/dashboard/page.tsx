@@ -33,26 +33,9 @@ export default async function DashboardPage() {
 
   const profile = profileData as { full_name: string | null; email: string | null; role: string | null } | null;
 
-  // If no profile or no role, create/update via API
+  // If no role, redirect to role selection
   if (!profile || !profile.role) {
-    try {
-      const apiUrl = process.env.VERCEL_URL
-        ? `https://${process.env.VERCEL_URL}/api/profiles/ensure`
-        : `http://localhost:3000/api/profiles/ensure`;
-
-      await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: user.id,
-          email: user.email || null,
-          full_name: user.user_metadata?.full_name || user.user_metadata?.name || null,
-          role: 'curator',
-        }),
-      });
-    } catch (e) {
-      console.error('Profile API error:', e);
-    }
+    redirect('/auth/role');
   }
 
   // Use role from profile or default to curator

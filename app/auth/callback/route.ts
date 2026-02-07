@@ -64,34 +64,47 @@ export async function GET(request: Request) {
     }
 
     // Always ensure profile exists via Python API (bypasses RLS)
-    // Default role to 'curator' if not provided
     const apiUrl = process.env.VERCEL_URL
       ? `https://${process.env.VERCEL_URL}/api/profiles/ensure`
       : `${requestUrl.origin}/api/profiles/ensure`;
 
-    const role = user.user_metadata?.role || 'curator'; // Always default to curator
+    // Check if user already has a profile with a role
+    const { data: existingProfile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .maybeSingle();
 
-    try {
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: user.id,
-          email: user.email || null,
-          full_name: user.user_metadata?.full_name || user.user_metadata?.name || null,
-          role: role,
-        }),
-      });
+    const profileData = existingProfile as { role: string | null } | null;
+    const hasRole = profileData && profileData.role;
 
-      if (!response.ok) {
-        console.error('Profile API error:', await response.text());
+    // If no role, create profile without role (user will be redirected to role selection)
+    if (!hasRole) {
+      try {
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: user.id,
+            email: user.email || null,
+            full_name: user.user_metadata?.full_name || user.user_metadata?.name || null,
+            role: null, // Don't set role yet
+          }),
+        });
+
+        if (!response.ok) {
+          console.error('Profile API error:', await response.text());
+        }
+      } catch (fetchError) {
+        console.error('Profile API fetch error:', fetchError);
+        // Don't fail the callback if profile creation fails
       }
-    } catch (fetchError) {
-      console.error('Profile API fetch error:', fetchError);
-      // Don't fail the callback if profile creation fails
+
+      // Redirect to role selection
+      return NextResponse.redirect(`${requestUrl.origin}/auth/role`);
     }
 
-    // Always redirect to dashboard - no onboarding
+    // User has role - redirect to dashboard
     return NextResponse.redirect(`${requestUrl.origin}/dashboard`);
 
   } catch (err) {

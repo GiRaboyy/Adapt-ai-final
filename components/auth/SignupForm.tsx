@@ -1,27 +1,24 @@
-/**
- * Signup form component with role selection
- */
-
 'use client';
 
 import { useState } from 'react';
 import { Input } from '../ui/Input';
 import { Button } from '../ui/Button';
 import { createClient } from '@/lib/supabase/client';
-import type { UserRole } from '@/lib/types';
 
 interface SignupFormProps {
   onSignupSuccess?: (email: string) => void;
+  onAlreadyExists?: (email: string, needsVerification: boolean) => void;
+  switchToLogin?: (email: string) => void;
 }
 
-export function SignupForm({ onSignupSuccess }: SignupFormProps) {
+export function SignupForm({ onSignupSuccess, switchToLogin }: SignupFormProps) {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [role, setRole] = useState<UserRole | ''>('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [showResendOption, setShowResendOption] = useState(false);
 
   const validateEmail = (email: string) => {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -32,8 +29,8 @@ export function SignupForm({ onSignupSuccess }: SignupFormProps) {
     setError('');
 
     // Validation
-    if (!fullName || !email || !password || !confirmPassword || !role) {
-      setError('Заполните все поля и выберите роль');
+    if (!fullName || !email || !password || !confirmPassword) {
+      setError('Заполните все поля');
       return;
     }
 
@@ -56,24 +53,38 @@ export function SignupForm({ onSignupSuccess }: SignupFormProps) {
 
     try {
       const supabase = createClient();
-      const { error: signUpError } = await supabase.auth.signUp({
+      const { data, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
         options: {
           data: {
             full_name: fullName,
-            role: role,
           },
           emailRedirectTo: `${window.location.origin}/auth/callback`,
         },
       });
 
       if (signUpError) {
-        if (signUpError.message.includes('already registered')) {
-          setError('Аккаунт с таким email уже существует. Войдите в систему.');
+        // Handle "user already registered" errors
+        if (
+          signUpError.message.includes('already registered') ||
+          signUpError.message.includes('already exists') ||
+          signUpError.message.includes('User already registered')
+        ) {
+          setError('Аккаунт с таким email уже существует.');
+          setShowResendOption(true);
         } else {
           setError(signUpError.message);
         }
+        setIsLoading(false);
+        return;
+      }
+
+      // Check if user was created or already exists
+      if (data.user && data.user.identities && data.user.identities.length === 0) {
+        // User exists but email not confirmed
+        setError('Аккаунт с таким email уже существует.');
+        setShowResendOption(true);
         setIsLoading(false);
         return;
       }
@@ -88,8 +99,41 @@ export function SignupForm({ onSignupSuccess }: SignupFormProps) {
     }
   };
 
+  const handleResendVerification = async () => {
+    setIsLoading(true);
+    setError('');
+    try {
+      const supabase = createClient();
+      const { error: resendError } = await supabase.auth.resend({
+        type: 'signup',
+        email,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
+        },
+      });
+
+      if (resendError) {
+        setError(resendError.message);
+      } else {
+        // Success - show verify screen
+        if (onSignupSuccess) {
+          onSignupSuccess(email);
+        }
+      }
+    } catch (err) {
+      setError('Не удалось отправить письмо.');
+    }
+    setIsLoading(false);
+  };
+
+  const handleSwitchToLogin = () => {
+    if (switchToLogin) {
+      switchToLogin(email);
+    }
+  };
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-5">
       {error && (
         <div className="bg-red-50 border border-red-500 rounded-lg p-4 flex items-start gap-3">
           <svg className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
@@ -97,6 +141,26 @@ export function SignupForm({ onSignupSuccess }: SignupFormProps) {
           </svg>
           <div className="flex-1">
             <p className="text-sm text-gray-900">{error}</p>
+            {showResendOption && (
+              <div className="mt-3 flex gap-2">
+                <button
+                  type="button"
+                  onClick={handleSwitchToLogin}
+                  className="text-sm font-medium text-lime hover:text-lime-dark transition-colors"
+                >
+                  Перейти ко входу
+                </button>
+                <span className="text-gray-400">•</span>
+                <button
+                  type="button"
+                  onClick={handleResendVerification}
+                  disabled={isLoading}
+                  className="text-sm font-medium text-lime hover:text-lime-dark transition-colors disabled:opacity-50"
+                >
+                  Отправить письмо ещё раз
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -121,71 +185,32 @@ export function SignupForm({ onSignupSuccess }: SignupFormProps) {
         autoComplete="email"
       />
 
-      <Input
-        label="Пароль"
-        type="password"
-        placeholder="••••••••"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        disabled={isLoading}
-        showPasswordToggle
-        autoComplete="new-password"
-      />
+      {/* Two-column password fields for desktop */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Input
+          label="Пароль"
+          type="password"
+          placeholder="••••••••"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          disabled={isLoading}
+          showPasswordToggle
+          autoComplete="new-password"
+        />
 
-      <Input
-        label="Повторите пароль"
-        type="password"
-        placeholder="••••••••"
-        value={confirmPassword}
-        onChange={(e) => setConfirmPassword(e.target.value)}
-        disabled={isLoading}
-        showPasswordToggle
-        autoComplete="new-password"
-      />
-
-      {/* Role Selector */}
-      <div>
-        <label className="block text-sm font-medium text-gray-900 mb-3">
-          Выберите роль
-        </label>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <button
-            type="button"
-            onClick={() => setRole('curator')}
-            disabled={isLoading}
-            className={`p-5 border-2 rounded-xl text-left transition-all ${
-              role === 'curator'
-                ? 'border-lime bg-lime/5'
-                : 'border-gray-200 hover:border-gray-300'
-            } disabled:opacity-50`}
-          >
-            <div className="text-3xl mb-2">💼</div>
-            <h3 className="font-semibold mb-1">Куратор</h3>
-            <p className="text-xs text-gray-600">
-              Создавайте курсы и отслеживайте прогресс
-            </p>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setRole('employee')}
-            disabled={isLoading}
-            className={`p-5 border-2 rounded-xl text-left transition-all ${
-              role === 'employee'
-                ? 'border-lime bg-lime/5'
-                : 'border-gray-200 hover:border-gray-300'
-            } disabled:opacity-50`}
-          >
-            <div className="text-3xl mb-2">👤</div>
-            <h3 className="font-semibold mb-1">Сотрудник</h3>
-            <p className="text-xs text-gray-600">
-              Проходите обучающие курсы
-            </p>
-          </button>
-        </div>
+        <Input
+          label="Повторите пароль"
+          type="password"
+          placeholder="••••••••"
+          value={confirmPassword}
+          onChange={(e) => setConfirmPassword(e.target.value)}
+          disabled={isLoading}
+          showPasswordToggle
+          autoComplete="new-password"
+        />
       </div>
 
-      <Button type="submit" isLoading={isLoading} className="w-full">
+      <Button type="submit" isLoading={isLoading} className="w-full mt-6">
         {isLoading ? 'Создаём аккаунт...' : 'Создать аккаунт'}
       </Button>
     </form>

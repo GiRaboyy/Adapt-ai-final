@@ -594,6 +594,146 @@ https://your-domain.vercel.app/auth/callback
 - Check browser console for errors
 - Verify migrations are applied: `supabase db push`
 
+### Google OAuth Branding Setup
+
+By default, users see "Sign in to continue to <PROJECT_REF>.supabase.co" when using Google OAuth. To show your brand name ("Adapt") instead:
+
+#### 1. Configure OAuth Consent Screen
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com)
+2. Navigate to APIs & Services → OAuth consent screen
+3. Fill in the following:
+
+**App information:**
+- App name: `Adapt`
+- User support email: your email
+- App logo: Upload your Adapt logo (square, at least 120px)
+
+**App domain:**
+- Application home page: `https://your-domain.vercel.app`
+- Application privacy policy: `https://your-domain.vercel.app/privacy` (if available)
+- Application terms of service: `https://your-domain.vercel.app/terms` (if available)
+
+**Authorized domains:**
+Add both:
+- `vercel.app` (if using Vercel subdomain)
+- `your-custom-domain.com` (if using custom domain)
+
+4. Save changes
+
+#### 2. Use a Custom Domain (Recommended)
+
+For professional branding, connect a custom domain to your Vercel project:
+
+1. **Purchase a domain** (e.g., `adapt.ai` or `getadapt.com`)
+
+2. **Add to Vercel:**
+   - Vercel Dashboard → Your Project → Settings → Domains
+   - Add your custom domain
+   - Configure DNS as instructed
+
+3. **Update Supabase Site URL:**
+   - Supabase Dashboard → Authentication → URL Configuration
+   - Set Site URL to: `https://your-custom-domain.com`
+   - Add redirect URL: `https://your-custom-domain.com/auth/callback`
+
+4. **Update Google Cloud OAuth:**
+   - Add your custom domain to Authorized domains
+   - Update OAuth consent screen homepage to use custom domain
+
+#### 3. Update Environment Variables
+
+If using a custom domain, update your Vercel environment variables:
+
+```env
+NEXT_PUBLIC_SITE_URL=https://your-custom-domain.com
+```
+
+And in your auth callback:
+
+```typescript
+emailRedirectTo: process.env.NEXT_PUBLIC_SITE_URL + '/auth/callback'
+```
+
+#### Result
+
+After these changes, users will see:
+- OAuth consent screen: "Sign in with Google to continue to **Adapt**"
+- Your logo displayed prominently
+- Professional, branded experience
+
+**Note:** These changes only affect how Google displays your app name. The actual OAuth redirect still goes through Supabase (this is required and cannot be changed).
+
+---
+
+**Stage 2 Complete** ✅
+
+Next: Stage 3 - Course Generation & AI Integration
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com)
+2. Navigate to APIs & Services → OAuth consent screen
+3. Fill in the following:
+
+**App information:**
+- App name: `Adapt`
+- User support email: your email
+- App logo: Upload your Adapt logo (square, at least 120px)
+
+**App domain:**
+- Application home page: `https://your-domain.vercel.app`
+- Application privacy policy: `https://your-domain.vercel.app/privacy` (if available)
+- Application terms of service: `https://your-domain.vercel.app/terms` (if available)
+
+**Authorized domains:**
+Add both:
+- `vercel.app` (if using Vercel subdomain)
+- `your-custom-domain.com` (if using custom domain)
+
+4. Save changes
+
+#### 2. Use a Custom Domain (Recommended)
+
+For professional branding, connect a custom domain to your Vercel project:
+
+1. **Purchase a domain** (e.g., `adapt.ai` or `getadapt.com`)
+
+2. **Add to Vercel:**
+   - Vercel Dashboard → Your Project → Settings → Domains
+   - Add your custom domain
+   - Configure DNS as instructed
+
+3. **Update Supabase Site URL:**
+   - Supabase Dashboard → Authentication → URL Configuration
+   - Set Site URL to: `https://your-custom-domain.com`
+   - Add redirect URL: `https://your-custom-domain.com/auth/callback`
+
+4. **Update Google Cloud OAuth:**
+   - Add your custom domain to Authorized domains
+   - Update OAuth consent screen homepage to use custom domain
+
+#### 3. Update Environment Variables
+
+If using a custom domain, update your Vercel environment variables:
+
+```env
+NEXT_PUBLIC_SITE_URL=https://your-custom-domain.com
+```
+
+And in your auth callback:
+
+```typescript
+emailRedirectTo: process.env.NEXT_PUBLIC_SITE_URL + '/auth/callback'
+```
+
+#### Result
+
+After these changes, users will see:
+- OAuth consent screen: "Sign in with Google to continue to **Adapt**"
+- Your logo displayed prominently
+- Professional, branded experience
+
+**Note:** These changes only affect how Google displays your app name. The actual OAuth redirect still goes through Supabase (this is required and cannot be changed).
+
 ---
 
 **Stage 2 Complete** ✅

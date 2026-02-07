@@ -1,21 +1,27 @@
-/**
- * Login form component
- */
-
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Input } from '../ui/Input';
 import { Button } from '../ui/Button';
 import { createClient } from '@/lib/supabase/client';
 
-export function LoginForm() {
+interface LoginFormProps {
+  prefillEmail?: string;
+}
+
+export function LoginForm({ prefillEmail = '' }: LoginFormProps) {
   const router = useRouter();
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(prefillEmail);
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    if (prefillEmail) {
+      setEmail(prefillEmail);
+    }
+  }, [prefillEmail]);
 
   const validateEmail = (email: string) => {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
