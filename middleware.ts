@@ -29,11 +29,38 @@ export async function middleware(request: NextRequest) {
   const isAuthPage = pathname.startsWith('/auth');
   const isDashboard = pathname.startsWith('/dashboard');
 
-  // If user is logged in and trying to access main auth page, softly redirect to dashboard
-  // Client-side will handle this more gracefully with a button
-  if (user && pathname === '/auth') {
-    // Let the auth page handle showing "already logged in" message
-    return response;
+  // If user is logged in and trying to access auth pages, redirect based on role
+  if (user && isAuthPage) {
+    try {
+      const supabaseAdmin = createServiceClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!,
+        {
+          auth: {
+            autoRefreshToken: false,
+            persistSession: false,
+          },
+        }
+      );
+
+      const { data: profile } = await supabaseAdmin
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      if (profile && profile.role) {
+        // User has role - redirect to dashboard
+        return NextResponse.redirect(new URL('/dashboard', request.url));
+      } else {
+        // User doesn't have role - redirect to role selection
+        return NextResponse.redirect(new URL('/auth/role', request.url));
+      }
+    } catch (err) {
+      console.error('Middleware auth check error:', err);
+      // On error, redirect to dashboard and let it handle
+      return NextResponse.redirect(new URL('/dashboard', request.url));
+    }
   }
 
   // Protected routes - require authentication and role
