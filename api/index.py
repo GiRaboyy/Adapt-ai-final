@@ -2,11 +2,12 @@
 FastAPI application entrypoint for Vercel serverless deployment.
 Provides health check endpoints for system monitoring.
 """
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
 from api._lib.settings import settings
+from api._lib.auth import get_current_user
 
 # Create FastAPI app instance
 app = FastAPI(
@@ -202,6 +203,59 @@ async def test_upload():
             "bucket": bucket_name,
             "path": "",
         }
+
+
+# =============================================================================
+# Role Endpoints (authenticated via Supabase JWT)
+# =============================================================================
+
+class RoleUpdate(BaseModel):
+    role: str
+
+
+@app.get("/api/profile/role")
+async def get_my_role(user: dict = Depends(get_current_user)):
+    """Get the current authenticated user's role."""
+    from api._lib.supabase_admin import get_admin_client
+
+    try:
+        supabase = get_admin_client()
+        result = supabase.table("profiles").select("role").eq("id", user["id"]).maybe_single().execute()
+        return {"role": result.data["role"] if result.data else None}
+    except Exception:
+        return {"role": None}
+
+
+@app.post("/api/profile/role")
+async def set_my_role(body: RoleUpdate, user: dict = Depends(get_current_user)):
+    """Set the current authenticated user's role."""
+    from api._lib.supabase_admin import get_admin_client
+
+    if body.role not in ("curator", "employee"):
+        raise HTTPException(status_code=400, detail='Role must be "curator" or "employee"')
+
+    try:
+        supabase = get_admin_client()
+
+        existing = supabase.table("profiles").select("id").eq("id", user["id"]).maybe_single().execute()
+
+        if existing.data:
+            result = supabase.table("profiles").update({"role": body.role}).eq("id", user["id"]).select().single().execute()
+        else:
+            result = supabase.table("profiles").insert({
+                "id": user["id"],
+                "email": user.get("email"),
+                "full_name": user.get("user_metadata", {}).get("full_name"),
+                "role": body.role,
+                "org_id": None,
+            }).select().single().execute()
+
+        return {"ok": True, "profile": result.data}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save role: {str(e)}")
 
 
 # =============================================================================

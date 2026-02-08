@@ -27,7 +27,7 @@ class Settings(BaseSettings):
 
 # Global settings instance
 settings = Settings(
-    supabase_url=os.getenv("SUPABASE_URL", ""),
+    supabase_url=os.getenv("SUPABASE_URL", os.getenv("NEXT_PUBLIC_SUPABASE_URL", "")),
     supabase_service_role_key=os.getenv("SUPABASE_SERVICE_ROLE_KEY", ""),
     environment=os.getenv("ENVIRONMENT", "local"),  # type: ignore
     git_sha=os.getenv("GIT_SHA", os.getenv("VERCEL_GIT_COMMIT_SHA", "unknown")),

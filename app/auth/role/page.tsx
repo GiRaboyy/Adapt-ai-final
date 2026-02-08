@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
+import { apiFetch } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import { AuthLayout } from '@/components/auth/AuthLayout';
 
@@ -28,8 +29,8 @@ export default function RoleSelectionPage() {
 
       setUserId(user.id);
 
-      // Check role via server API (bypasses RLS)
-      const res = await fetch('/api/profile/role');
+      // Check role via FastAPI (bypasses RLS)
+      const res = await apiFetch('/api/profile/role');
       const { role } = await res.json();
 
       if (role) {
@@ -59,10 +60,9 @@ export default function RoleSelectionPage() {
     setError('');
 
     try {
-      // Call Next.js API route to save role
-      const response = await fetch('/api/profile/role', {
+      // Save role via FastAPI
+      const response = await apiFetch('/api/profile/role', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ role: selectedRole }),
       });
 
