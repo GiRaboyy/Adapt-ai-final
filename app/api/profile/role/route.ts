@@ -2,6 +2,45 @@ import { createClient } from '@/lib/supabase/server';
 import { createClient as createServiceClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 
+function getAdminClient() {
+  return createServiceClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    }
+  );
+}
+
+/**
+ * GET /api/profile/role
+ * Returns the current user's role (bypasses RLS)
+ */
+export async function GET() {
+  try {
+    const supabase = await createClient();
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      return NextResponse.json({ role: null }, { status: 401 });
+    }
+
+    const supabaseAdmin = getAdminClient();
+    const { data: profile } = await supabaseAdmin
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    return NextResponse.json({ role: profile?.role || null });
+  } catch {
+    return NextResponse.json({ role: null }, { status: 500 });
+  }
+}
+
 /**
  * POST /api/profile/role
  * Updates the user's role in their profile
@@ -36,16 +75,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create admin client with service role key to bypass RLS
-    const supabaseAdmin = createServiceClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      }
-    );
+    const supabaseAdmin = getAdminClient();
 
     // Check if profile exists
     const { data: existingProfile } = await supabaseAdmin

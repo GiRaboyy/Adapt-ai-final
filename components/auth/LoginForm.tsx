@@ -61,24 +61,14 @@ export function LoginForm({ prefillEmail = '' }: LoginFormProps) {
         return;
       }
 
-      // Check if user has a role - redirect accordingly
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data: profileData } = await supabase
-          .from('profiles')
-          .select('role')
-          .eq('id', user.id)
-          .maybeSingle();
+      // Check if user has a role via server API (bypasses RLS)
+      const roleRes = await fetch('/api/profile/role');
+      const { role } = await roleRes.json();
 
-        const profile = profileData as { role: string | null } | null;
-
-        if (!profile || !profile.role) {
-          // No role set - redirect to role selection
-          router.push('/auth/role');
-        } else {
-          // Has role - redirect to dashboard
-          router.push('/dashboard');
-        }
+      if (!role) {
+        router.push('/auth/role');
+      } else {
+        router.push('/dashboard');
       }
     } catch (err) {
       setError('Произошла ошибка. Попробуйте ещё раз.');

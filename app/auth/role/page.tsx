@@ -21,7 +21,6 @@ export default function RoleSelectionPage() {
       const { data: { user } } = await supabase.auth.getUser();
 
       if (!user) {
-        // No session - show message instead of redirect
         setNoSession(true);
         setChecking(false);
         return;
@@ -29,17 +28,11 @@ export default function RoleSelectionPage() {
 
       setUserId(user.id);
 
-      // Check if user already has a role
-      const { data: profileData } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', user.id)
-        .maybeSingle();
+      // Check role via server API (bypasses RLS)
+      const res = await fetch('/api/profile/role');
+      const { role } = await res.json();
 
-      const profile = profileData as { role: string | null } | null;
-
-      if (profile && profile.role) {
-        // Already has role, redirect to dashboard
+      if (role) {
         router.replace('/dashboard');
         return;
       }
