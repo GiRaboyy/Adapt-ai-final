@@ -69,6 +69,16 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(new URL('/auth', request.url));
     }
 
+    // Check if user is coming from password recovery
+    const fromRecovery = request.nextUrl.searchParams.get('from') === 'recovery';
+
+    if (fromRecovery) {
+      // User just completed password reset - skip role check and clean up URL
+      const url = request.nextUrl.clone();
+      url.searchParams.delete('from');
+      return NextResponse.redirect(url);
+    }
+
     // Check if user has a role set
     try {
       const supabaseAdmin = createServiceClient(

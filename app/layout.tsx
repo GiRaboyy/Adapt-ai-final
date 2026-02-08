@@ -9,11 +9,26 @@ const inter = Inter({
   display: 'swap',
 })
 
-const renco = localFont({
-  src: '../public/fonts/renco/Renco-Black.ttf',
+const ttGertika = localFont({
+  src: [
+    {
+      path: '../public/fonts/tt_gertika/TT_Gertika_Trial_Regular.ttf',
+      weight: '400',
+      style: 'normal',
+    },
+    {
+      path: '../public/fonts/tt_gertika/TT_Gertika_Trial_Bold.ttf',
+      weight: '700',
+      style: 'normal',
+    },
+    {
+      path: '../public/fonts/tt_gertika/TT_Gertika_Trial_Black.ttf',
+      weight: '900',
+      style: 'normal',
+    },
+  ],
   variable: '--font-display',
   display: 'swap',
-  weight: '900',
 })
 
 export const metadata: Metadata = {
@@ -27,7 +42,7 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="ru" className={`${inter.variable} ${renco.variable}`}>
+    <html lang="ru" className={`${inter.variable} ${ttGertika.variable}`}>
       <body className="font-sans antialiased">{children}</body>
     </html>
   )

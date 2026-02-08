@@ -5,14 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { createClient } from '@/lib/supabase/client';
-
-function LogoMark() {
-  return (
-    <div className="w-10 h-10 rounded-lg bg-lime/10 border border-lime/30 flex items-center justify-center shadow-[0_0_20px_rgba(200,246,93,0.15)]">
-      <span className="font-display font-bold text-lime text-xl">A</span>
-    </div>
-  );
-}
+import { AuthLayout } from '@/components/auth/AuthLayout';
 
 export default function ResetPasswordPage() {
   const router = useRouter();
@@ -56,10 +49,10 @@ export default function ResetPasswordPage() {
       }
 
       setSuccess(true);
-      
-      // Redirect to dashboard after 2 seconds
+
+      // Redirect to dashboard after 2 seconds with recovery flag to bypass role check
       setTimeout(() => {
-        router.push('/dashboard');
+        router.push('/dashboard?from=recovery');
         router.refresh();
       }, 2000);
     } catch (err) {
@@ -70,92 +63,90 @@ export default function ResetPasswordPage() {
 
   if (success) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-6 bg-[#F6F7F9]">
-        <div className="w-full max-w-md">
-          <div className="glass-card rounded-2xl shadow-xl p-10 text-center space-y-6">
-            <div className="flex justify-center mb-4">
-              <LogoMark />
-            </div>
-
-            <div className="flex justify-center">
-              <div className="w-16 h-16 bg-lime/10 rounded-full flex items-center justify-center">
-                <svg className="w-8 h-8 text-lime" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <AuthLayout contentPadding="large">
+        <div className="text-center space-y-6">
+          <div className="flex justify-center">
+            <div className="relative">
+              <div className="absolute inset-0 bg-lime/20 rounded-full blur-xl" />
+              <div className="relative w-20 h-20 bg-lime/10 rounded-full flex items-center justify-center">
+                <svg className="w-10 h-10 text-lime" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </div>
             </div>
-
-            <div className="space-y-3">
-              <h1 className="font-display text-2xl font-bold text-gray-900">Пароль обновлён!</h1>
-              <p className="text-gray-600">
-                Ваш пароль успешно изменён. Сейчас вы будете перенаправлены в личный кабинет.
-              </p>
-            </div>
-
-            <Button onClick={() => router.push('/dashboard')} variant="primary" className="w-full">
-              Перейти в кабинет
-            </Button>
           </div>
+
+          <div className="space-y-3">
+            <h1 className="font-display text-2xl font-bold text-gray-900">Пароль обновлён!</h1>
+            <p className="text-gray-600">
+              Ваш пароль успешно изменён. Сейчас вы будете перенаправлены в личный кабинет.
+            </p>
+          </div>
+
+          <Button onClick={() => router.push('/dashboard?from=recovery')} variant="primary" className="w-full">
+            Перейти в кабинет
+          </Button>
         </div>
-      </div>
+      </AuthLayout>
     );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-6 bg-[#F6F7F9]">
-      <div className="w-full max-w-md">
-        <div className="glass-card rounded-2xl shadow-xl p-10">
-          <div className="flex justify-center mb-6">
-            <LogoMark />
-          </div>
-
-          <div className="text-center mb-8">
-            <h1 className="font-display text-3xl font-extrabold text-gray-900 mb-3">
-              Новый пароль
-            </h1>
-            <p className="text-gray-600">
-              Введите новый пароль для вашего аккаунта
-            </p>
-          </div>
-
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {error && (
-              <div className="bg-[#FFF1F2] border-2 border-[#FCA5A5] rounded-xl p-4 flex items-start gap-3">
-                <svg className="w-5 h-5 text-[#DC2626] flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                </svg>
-                <p className="text-sm font-semibold text-[#111827] flex-1">{error}</p>
-              </div>
-            )}
-
-            <Input
-              label="Новый пароль"
-              type="password"
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              disabled={isLoading}
-              showPasswordToggle
-              autoComplete="new-password"
-            />
-
-            <Input
-              label="Повторите пароль"
-              type="password"
-              placeholder="••••••••"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              disabled={isLoading}
-              showPasswordToggle
-              autoComplete="new-password"
-            />
-
-            <Button type="submit" isLoading={isLoading} className="w-full">
-              {isLoading ? 'Обновляем...' : 'Обновить пароль'}
-            </Button>
-          </form>
-        </div>
+    <AuthLayout contentPadding="large">
+      <div className="text-center mb-8">
+        <h1 className="font-display text-3xl font-extrabold text-gray-900 mb-3">
+          Новый пароль
+        </h1>
+        <p className="text-gray-600">
+          Введите новый пароль для вашего аккаунта
+        </p>
       </div>
-    </div>
+
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {error && (
+          <div className="bg-red-50 border-2 border-red-200 rounded-xl p-4 flex items-start gap-3">
+            <svg className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+            </svg>
+            <p className="text-sm font-semibold text-red-900 flex-1">{error}</p>
+          </div>
+        )}
+
+        <Input
+          label="Новый пароль"
+          type="password"
+          placeholder="••••••••"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          disabled={isLoading}
+          showPasswordToggle
+          autoComplete="new-password"
+        />
+
+        <Input
+          label="Повторите пароль"
+          type="password"
+          placeholder="••••••••"
+          value={confirmPassword}
+          onChange={(e) => setConfirmPassword(e.target.value)}
+          disabled={isLoading}
+          showPasswordToggle
+          autoComplete="new-password"
+        />
+
+        <Button type="submit" isLoading={isLoading} className="w-full">
+          {isLoading ? 'Обновляем...' : 'Обновить пароль'}
+        </Button>
+
+        <button
+          type="button"
+          onClick={() => router.push('/auth')}
+          className="w-full text-sm text-gray-600 hover:text-gray-900 transition-colors"
+          disabled={isLoading}
+        >
+          Вернуться ко входу
+        </button>
+      </form>
+    </AuthLayout>
   );
 }
