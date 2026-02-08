@@ -8,6 +8,10 @@ from pydantic import BaseModel
 from typing import Optional
 from api._lib.settings import settings
 from api._lib.auth import get_current_user
+from api._lib.logger import get_logger
+
+# Initialize logger for this module
+logger = get_logger(__name__)
 
 # Create FastAPI app instance
 app = FastAPI(
@@ -218,44 +222,133 @@ async def get_my_role(user: dict = Depends(get_current_user)):
     """Get the current authenticated user's role."""
     from api._lib.supabase_admin import get_admin_client
 
+    logger = get_logger(__name__)
+    user_id = user["id"]
+
+    logger.info(f"GET /api/profile/role - user_id={user_id}")
+
     try:
         supabase = get_admin_client()
-        result = supabase.table("profiles").select("role").eq("id", user["id"]).maybe_single().execute()
-        return {"role": result.data["role"] if result.data else None}
-    except Exception:
+        result = supabase.table("profiles").select("role").eq("id", user_id).maybe_single().execute()
+
+        role = result.data["role"] if result.data else None
+        logger.info(f"GET /api/profile/role - user_id={user_id}, role={role}")
+
+        return {"role": role}
+
+    except HTTPException:
+        # Re-raise auth errors from get_current_user
+        raise
+    except Exception as e:
+        # Log database/connection errors but still return null role
+        # (Frontend handles null by redirecting to role selection)
+        logger.error(f"GET /api/profile/role - user_id={user_id}, error={type(e).__name__}: {str(e)}")
         return {"role": None}
 
 
 @app.post("/api/profile/role")
 async def set_my_role(body: RoleUpdate, user: dict = Depends(get_current_user)):
-    """Set the current authenticated user's role."""
+    """Set the current authenticated user's role using atomic UPSERT."""
     from api._lib.supabase_admin import get_admin_client
 
+    logger = get_logger(__name__)
+    user_id = user["id"]
+
     if body.role not in ("curator", "employee"):
+        logger.warning(f"POST /api/profile/role - user_id={user_id}, invalid_role={body.role}")
         raise HTTPException(status_code=400, detail='Role must be "curator" or "employee"')
+
+    logger.info(f"POST /api/profile/role - user_id={user_id}, role={body.role}")
 
     try:
         supabase = get_admin_client()
 
-        existing = supabase.table("profiles").select("id").eq("id", user["id"]).maybe_single().execute()
-
-        if existing.data:
-            result = supabase.table("profiles").update({"role": body.role}).eq("id", user["id"]).select().single().execute()
-        else:
-            result = supabase.table("profiles").insert({
-                "id": user["id"],
+        # Use UPSERT to atomically insert or update
+        # Supabase upsert automatically handles ON CONFLICT
+        result = supabase.table("profiles").upsert(
+            {
+                "id": user_id,
                 "email": user.get("email"),
                 "full_name": user.get("user_metadata", {}).get("full_name"),
                 "role": body.role,
                 "org_id": None,
-            }).select().single().execute()
+            }
+        ).select().execute()
 
-        return {"ok": True, "profile": result.data}
+        # Check if we got data back
+        if result.data and len(result.data) > 0:
+            profile = result.data[0]
+            logger.info(f"POST /api/profile/role - user_id={user_id}, role={body.role}, success=True")
+            return {"ok": True, "profile": profile}
+        else:
+            logger.error(f"POST /api/profile/role - user_id={user_id}, no data returned from upsert")
+            raise HTTPException(status_code=500, detail="No data returned from database")
 
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to save role: {str(e)}")
+        error_type = type(e).__name__
+        error_msg = str(e)
+        logger.error(
+            f"POST /api/profile/role - user_id={user_id}, role={body.role}, "
+            f"error={error_type}, message={error_msg}"
+        )
+        raise HTTPException(status_code=500, detail=f"Failed to save role: {error_msg}")
+
+
+# =============================================================================
+# Auth Check Endpoints
+# =============================================================================
+
+class EmailCheckRequest(BaseModel):
+    """Request body for checking email status."""
+    email: str
+
+
+@app.post("/api/auth/check-email")
+async def check_email_status(body: EmailCheckRequest):
+    """
+    Check if an email is registered and if the account is confirmed.
+    Returns: { exists: bool, confirmed: bool | null }
+    """
+    from api._lib.supabase_admin import get_admin_client
+
+    try:
+        supabase = get_admin_client()
+
+        # Use admin API to get users list
+        try:
+            # List users and find by email
+            # Note: In production, consider pagination for large user bases
+            response = supabase.auth.admin.list_users()
+
+            # Extract users from response
+            users = response if isinstance(response, list) else getattr(response, 'users', [])
+
+            # Find user with matching email (case-insensitive)
+            user = next((u for u in users if u.email and u.email.lower() == body.email.lower()), None)
+
+            if not user:
+                return {
+                    "exists": False,
+                    "confirmed": None,
+                }
+
+            # Check if email is confirmed
+            is_confirmed = user.email_confirmed_at is not None
+
+            return {
+                "exists": True,
+                "confirmed": is_confirmed,
+            }
+
+        except Exception as auth_error:
+            raise HTTPException(status_code=500, detail=f"Auth check failed: {str(auth_error)}")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
 
 # =============================================================================

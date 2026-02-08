@@ -11,12 +11,18 @@ async def get_current_user(request: Request) -> dict:
     Extract and verify the Supabase access token from the Authorization header.
     Returns the authenticated user dict.
     """
+    from api._lib.logger import get_logger, redact_token
+
+    logger = get_logger(__name__)
+
     auth_header = request.headers.get("Authorization")
     if not auth_header or not auth_header.startswith("Bearer "):
+        logger.warning("Auth failed: missing or invalid Authorization header")
         raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
 
     token = auth_header.removeprefix("Bearer ").strip()
     if not token:
+        logger.warning("Auth failed: empty token")
         raise HTTPException(status_code=401, detail="Empty token")
 
     try:
@@ -24,9 +30,12 @@ async def get_current_user(request: Request) -> dict:
         user_response = supabase.auth.get_user(token)
 
         if not user_response or not user_response.user:
+            logger.warning(f"Auth failed: invalid token (token={redact_token(token)})")
             raise HTTPException(status_code=401, detail="Invalid token")
 
         user = user_response.user
+        logger.debug(f"Auth success: user_id={user.id}, email={user.email}")
+
         return {
             "id": user.id,
             "email": user.email,
@@ -35,4 +44,8 @@ async def get_current_user(request: Request) -> dict:
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(
+            f"Auth error: {type(e).__name__}: {str(e)} "
+            f"(token={redact_token(token)})"
+        )
         raise HTTPException(status_code=401, detail=f"Token verification failed: {str(e)}")

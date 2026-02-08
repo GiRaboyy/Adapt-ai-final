@@ -61,6 +61,34 @@ export function SignupForm({ onSignupSuccess, switchToLogin }: SignupFormProps) 
     setIsLoading(true);
 
     try {
+      // First, check if email already exists and its status
+      const emailCheckResponse = await fetch('/api/auth/check-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+
+      if (emailCheckResponse.ok) {
+        const { exists, confirmed } = await emailCheckResponse.json();
+
+        if (exists) {
+          if (confirmed) {
+            // Account exists and is confirmed - only allow login
+            setError('Аккаунт с таким email уже существует и подтверждён. Войдите в систему.');
+            setShowResendOption(false);
+            setIsLoading(false);
+            return;
+          } else {
+            // Account exists but not confirmed - allow resend
+            setError('Аккаунт с таким email уже зарегистрирован, но не подтверждён.');
+            setShowResendOption(true);
+            setIsLoading(false);
+            return;
+          }
+        }
+      }
+
+      // Email doesn't exist - proceed with signup
       const supabase = createClient();
       const { data, error: signUpError } = await supabase.auth.signUp({
         email,
@@ -76,13 +104,6 @@ export function SignupForm({ onSignupSuccess, switchToLogin }: SignupFormProps) 
       if (signUpError) {
         // Handle specific error types
         if (
-          signUpError.message.includes('already registered') ||
-          signUpError.message.includes('already exists') ||
-          signUpError.message.includes('User already registered')
-        ) {
-          setError('Аккаунт с таким email уже существует.');
-          setShowResendOption(true);
-        } else if (
           signUpError.message.includes('email') &&
           signUpError.message.toLowerCase().includes('send')
         ) {
@@ -93,15 +114,6 @@ export function SignupForm({ onSignupSuccess, switchToLogin }: SignupFormProps) 
         } else {
           setError(signUpError.message);
         }
-        setIsLoading(false);
-        return;
-      }
-
-      // Check if user was created or already exists
-      if (data.user && data.user.identities && data.user.identities.length === 0) {
-        // User exists but email not confirmed
-        setError('Аккаунт с таким email уже существует.');
-        setShowResendOption(true);
         setIsLoading(false);
         return;
       }
@@ -161,14 +173,12 @@ export function SignupForm({ onSignupSuccess, switchToLogin }: SignupFormProps) 
           </svg>
           <div className="flex-1">
             <p className="text-sm font-semibold text-[#111827] mb-1">
-              {showResendOption ? 'Аккаунт уже существует' : 'Ошибка'}
+              {error.includes('уже существует') ? 'Аккаунт уже существует' : 'Ошибка'}
             </p>
             <p className="text-sm text-[#111827]">
-              {showResendOption 
-                ? 'Войдите или повторно отправьте письмо подтверждения.'
-                : error}
+              {error}
             </p>
-            {showResendOption && (
+            {error.includes('уже существует') && (
               <div className="mt-3 flex gap-3">
                 <button
                   type="button"
@@ -177,16 +187,18 @@ export function SignupForm({ onSignupSuccess, switchToLogin }: SignupFormProps) 
                 >
                   Перейти ко входу
                 </button>
-                <button
-                  type="button"
-                  onClick={handleResendVerification}
-                  disabled={isLoading || resendCooldown > 0}
-                  className="text-sm font-semibold text-[#111827] hover:text-[#374151] transition-colors px-4 py-2 bg-white rounded-lg border border-gray-300 hover:border-gray-400 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {resendCooldown > 0 
-                    ? `Отправить через ${resendCooldown}с` 
-                    : 'Отправить письмо ещё раз'}
-                </button>
+                {showResendOption && (
+                  <button
+                    type="button"
+                    onClick={handleResendVerification}
+                    disabled={isLoading || resendCooldown > 0}
+                    className="text-sm font-semibold text-[#111827] hover:text-[#374151] transition-colors px-4 py-2 bg-white rounded-lg border border-gray-300 hover:border-gray-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {resendCooldown > 0
+                      ? `Отправить через ${resendCooldown}с`
+                      : 'Отправить письмо ещё раз'}
+                  </button>
+                )}
               </div>
             )}
           </div>
