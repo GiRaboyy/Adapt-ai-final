@@ -63,7 +63,7 @@ export default function ResetPasswordPage() {
 
   if (success) {
     return (
-      <AuthLayout showMenu={false}>
+      <AuthLayout>
         <div className="glass-card rounded-2xl shadow-xl p-8 text-center space-y-6">
           <div className="flex justify-center">
             <div className="w-16 h-16 bg-lime/10 rounded-full flex items-center justify-center">
@@ -89,7 +89,7 @@ export default function ResetPasswordPage() {
   }
 
   return (
-    <AuthLayout showMenu={false}>
+    <AuthLayout>
       <div className="glass-card rounded-2xl shadow-xl p-8">
         <div className="text-center mb-8">
           <h1 className="font-display text-2xl font-bold text-gray-900 mb-2">

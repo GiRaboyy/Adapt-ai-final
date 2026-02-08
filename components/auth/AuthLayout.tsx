@@ -1,7 +1,8 @@
 'use client';
 
+import { Suspense } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 
 function LogoMark() {
   return (
@@ -14,34 +15,89 @@ function LogoMark() {
 interface AuthLayoutProps {
   children: React.ReactNode;
   showMenu?: boolean;
+  maxWidth?: string;
 }
 
 interface NavItem {
   href: string;
   label: string;
-  paths: string[]; // paths that should highlight this item
 }
 
 const navItems: NavItem[] = [
-  { href: '/auth', label: 'Вход', paths: ['/auth'] },
-  { href: '/auth?tab=signup', label: 'Регистрация', paths: [] },
-  { href: '/auth/forgot', label: 'Забыли пароль', paths: ['/auth/forgot', '/auth/reset'] },
+  { href: '/auth', label: 'Вход' },
+  { href: '/auth?tab=signup', label: 'Регистрация' },
+  { href: '/auth/forgot', label: 'Забыли пароль' },
 ];
 
-export function AuthLayout({ children, showMenu = true }: AuthLayoutProps) {
+function useActiveNav() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const tab = searchParams.get('tab');
 
-  const isActive = (item: NavItem) => {
-    return item.paths.includes(pathname);
+  return (item: NavItem) => {
+    if (item.href === '/auth?tab=signup') {
+      return (pathname === '/auth' && tab === 'signup') || pathname === '/auth/verify' || pathname === '/auth/role';
+    }
+    if (item.href === '/auth') {
+      return pathname === '/auth' && tab !== 'signup';
+    }
+    if (item.href === '/auth/forgot') {
+      return pathname === '/auth/forgot' || pathname === '/auth/reset';
+    }
+    return false;
   };
+}
+
+function DesktopNav() {
+  const isActive = useActiveNav();
 
   return (
+    <nav className="flex-1 space-y-2">
+      {navItems.map((item) => (
+        <Link
+          key={item.href}
+          href={item.href}
+          className={`flex items-center px-4 py-3 rounded-xl text-sm font-medium transition-all ${
+            isActive(item)
+              ? 'bg-lime/15 text-lime border border-lime/30'
+              : 'text-gray-400 hover:text-white hover:bg-white/5'
+          }`}
+        >
+          {item.label}
+        </Link>
+      ))}
+    </nav>
+  );
+}
+
+function MobileNav() {
+  const isActive = useActiveNav();
+
+  return (
+    <div className="flex items-center gap-3 flex-wrap">
+      {navItems.map((item) => (
+        <Link
+          key={item.href}
+          href={item.href}
+          className={`text-sm font-medium transition-colors whitespace-nowrap ${
+            isActive(item) ? 'text-lime' : 'text-gray-400'
+          }`}
+        >
+          {item.label}
+        </Link>
+      ))}
+    </div>
+  );
+}
+
+export function AuthLayout({ children, showMenu = true, maxWidth = 'max-w-[480px]' }: AuthLayoutProps) {
+  return (
     <div className="min-h-screen flex flex-col lg:flex-row">
-      {/* Left Sidebar */}
-      <div className="hidden lg:flex lg:w-[300px] xl:w-[320px] bg-dark-bg flex-col relative overflow-hidden">
+      {/* Left Sidebar - Desktop */}
+      <div className="hidden lg:flex lg:w-[300px] xl:w-[320px] bg-dark-bg flex-col relative overflow-hidden flex-shrink-0">
         {/* Noise overlay */}
         <div className="absolute inset-0 noise-overlay pointer-events-none" />
-        
+
         {/* Content */}
         <div className="relative z-10 flex flex-col h-full p-8">
           {/* Logo */}
@@ -53,22 +109,12 @@ export function AuthLayout({ children, showMenu = true }: AuthLayoutProps) {
           </div>
 
           {/* Navigation */}
-          {showMenu && (
-            <nav className="flex-1 space-y-2">
-              {navItems.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`flex items-center px-4 py-3 rounded-xl text-sm font-medium transition-all ${
-                    isActive(item)
-                      ? 'bg-lime/15 text-lime border border-lime/30'
-                      : 'text-gray-400 hover:text-white hover:bg-white/5'
-                  }`}
-                >
-                  {item.label}
-                </Link>
-              ))}
-            </nav>
+          {showMenu ? (
+            <Suspense fallback={<div className="flex-1" />}>
+              <DesktopNav />
+            </Suspense>
+          ) : (
+            <div className="flex-1" />
           )}
 
           {/* Footer */}
@@ -76,8 +122,8 @@ export function AuthLayout({ children, showMenu = true }: AuthLayoutProps) {
             <p className="text-xs text-gray-500">
               © 2024 Adapt. Все права защищены.
             </p>
-            <a 
-              href="mailto:support@adapt-ai.ru" 
+            <a
+              href="mailto:support@adapt-ai.ru"
               className="text-xs text-gray-500 hover:text-gray-400 transition-colors"
             >
               Поддержка
@@ -91,33 +137,22 @@ export function AuthLayout({ children, showMenu = true }: AuthLayoutProps) {
 
       {/* Mobile Header */}
       <div className="lg:hidden bg-dark-bg px-4 py-4">
-        <div className="flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2">
+        <div className="flex items-center justify-between gap-4">
+          <Link href="/" className="flex items-center gap-2 flex-shrink-0">
             <LogoMark />
             <span className="font-display text-lg font-bold text-white">Adapt</span>
           </Link>
           {showMenu && (
-            <div className="flex items-center gap-4">
-              <Link 
-                href="/auth" 
-                className={`text-sm font-medium ${pathname === '/auth' ? 'text-lime' : 'text-gray-400'}`}
-              >
-                Вход
-              </Link>
-              <Link 
-                href="/auth/forgot" 
-                className={`text-sm font-medium ${pathname.includes('forgot') || pathname.includes('reset') ? 'text-lime' : 'text-gray-400'}`}
-              >
-                Забыли пароль
-              </Link>
-            </div>
+            <Suspense fallback={null}>
+              <MobileNav />
+            </Suspense>
           )}
         </div>
       </div>
 
       {/* Right Content Area */}
       <div className="flex-1 flex items-center justify-center p-6 lg:p-12 bg-[#F6F7F9] min-h-[calc(100vh-64px)] lg:min-h-screen">
-        <div className="w-full max-w-[480px]">
+        <div className={`w-full ${maxWidth}`}>
           {children}
         </div>
       </div>

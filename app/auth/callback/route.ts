@@ -14,6 +14,7 @@ import { NextResponse } from 'next/server';
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get('code');
+  const flow = requestUrl.searchParams.get('flow');
   const error = requestUrl.searchParams.get('error');
   const error_description = requestUrl.searchParams.get('error_description');
 
@@ -108,6 +109,11 @@ export async function GET(request: Request) {
         console.error('Profile insert error:', insertError);
         // Don't fail - user can still proceed, profile will be created later
       }
+    }
+
+    // Recovery flow: skip role check, go straight to reset page
+    if (flow === 'recovery') {
+      return NextResponse.redirect(`${requestUrl.origin}/auth/reset`);
     }
 
     // Redirect based on role

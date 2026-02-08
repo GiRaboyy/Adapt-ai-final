@@ -62,7 +62,7 @@ export default function VerifyPage() {
   };
 
   return (
-    <AuthLayout showMenu={false}>
+    <AuthLayout>
       <div className="glass-card rounded-2xl shadow-xl p-8 space-y-6">
         {/* Mail Icon */}
         <div className="flex justify-center">
