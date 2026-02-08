@@ -6,7 +6,7 @@
 
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { Button } from '../ui/Button';
+import { LegacyButton as Button } from '@/components/ui/LegacyButton';
 import { useState } from 'react';
 
 export function SignOutButton() {

@@ -18,7 +18,7 @@ export function BrandPanel({
   subtitle = 'ИИ-курсы на основе базы знаний вашей компании',
 }: BrandPanelProps) {
   return (
-    <div className="hidden lg:flex lg:w-[48%] bg-dark-bg relative overflow-hidden noise-overlay">
+    <div className="hidden lg:flex lg:w-[48%] bg-[#0B0B0F] relative overflow-hidden noise-overlay">
       <div className="relative z-10 flex flex-col justify-center items-start h-full px-12 py-16">
         {/* Logo at top - absolute positioned */}
         <div className="absolute top-8 left-12">

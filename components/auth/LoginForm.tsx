@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Input } from '../ui/Input';
-import { Button } from '../ui/Button';
+import { LegacyInput as Input } from '@/components/ui/LegacyInput';
+import { LegacyButton as Button } from '@/components/ui/LegacyButton';
 import { createClient } from '@/lib/supabase/client';
 import { apiFetch } from '@/lib/api';
 

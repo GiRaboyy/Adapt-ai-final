@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { apiFetch } from '@/lib/api';
-import { Button } from '@/components/ui/Button';
+import { LegacyButton as Button } from '@/components/ui/LegacyButton';
 import { AuthLayout } from '@/components/auth/AuthLayout';
 
 export default function RoleSelectionPage() {
@@ -137,7 +137,7 @@ export default function RoleSelectionPage() {
             Для выбора роли необходимо войти в систему
           </p>
 
-          <Button onClick={() => router.push('/auth')} variant="primary" className="w-full">
+          <Button onClick={() => router.push('/auth')} variant="default" className="w-full">
             Войти в систему
           </Button>
         </div>

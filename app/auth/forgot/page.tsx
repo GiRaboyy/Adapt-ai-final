@@ -2,8 +2,8 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Input } from '@/components/ui/Input';
-import { Button } from '@/components/ui/Button';
+import { LegacyInput as Input } from '@/components/ui/LegacyInput';
+import { LegacyButton as Button } from '@/components/ui/LegacyButton';
 import { createClient } from '@/lib/supabase/client';
 import { AuthLayout } from '@/components/auth/AuthLayout';
 
@@ -76,7 +76,7 @@ export default function ForgotPasswordPage() {
             <p className="font-medium text-gray-900">{email}</p>
           </div>
 
-          <Button onClick={() => router.push('/auth')} variant="primary" className="w-full">
+          <Button onClick={() => router.push('/auth')} variant="default" className="w-full">
             Вернуться ко входу
           </Button>
         </div>

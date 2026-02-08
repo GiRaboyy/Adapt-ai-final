@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Button } from '@/components/ui/Button';
+import { LegacyButton as Button } from '@/components/ui/LegacyButton';
 import { createClient } from '@/lib/supabase/client';
 import { AuthLayout } from '@/components/auth/AuthLayout';
 
@@ -96,7 +96,7 @@ export default function VerifyPage() {
         <Button
           onClick={handleResend}
           disabled={countdown > 0 || isResending}
-          variant="primary"
+          variant="default"
           isLoading={isResending}
           className="w-full h-12 text-base font-bold"
         >

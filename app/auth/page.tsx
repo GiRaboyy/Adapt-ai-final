@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { LoginForm } from '@/components/auth/LoginForm';
 import { SignupForm } from '@/components/auth/SignupForm';
 import { GoogleButton } from '@/components/auth/GoogleButton';
-import { Button } from '@/components/ui/Button';
+import { LegacyButton as Button } from '@/components/ui/LegacyButton';
 import { createClient } from '@/lib/supabase/client';
 import { AuthLayout } from '@/components/auth/AuthLayout';
 
@@ -110,7 +110,7 @@ function AuthContent() {
             <p className="text-gray-600">Вы уже авторизованы в системе</p>
           </div>
 
-          <Button onClick={() => router.push('/dashboard')} variant="primary" className="w-full">
+          <Button onClick={() => router.push('/dashboard')} variant="default" className="w-full">
             Перейти в кабинет
           </Button>
         </div>
@@ -149,7 +149,7 @@ function AuthContent() {
         )}
 
         <div className="space-y-3">
-          <Button onClick={handleResendEmail} disabled={countdown > 0 || isResending} variant="primary" isLoading={isResending} className="w-full">
+          <Button onClick={handleResendEmail} disabled={countdown > 0 || isResending} variant="default" isLoading={isResending} className="w-full">
             {isResending ? 'Отправляем...' : countdown > 0 ? `Отправить ещё раз через ${formatTime(countdown)}` : 'Отправить ещё раз'}
           </Button>
           <button onClick={() => { setVerifyEmail(null); setActiveTab('signup'); }} className="w-full text-sm text-gray-600 hover:text-gray-900 transition-colors">
