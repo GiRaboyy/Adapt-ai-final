@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Disallow: /dashboard
+Disallow: /auth
+Disallow: /api
+Disallow: /cloud-check
+
+Sitemap: https://yourdomain.com/sitemap.xml

@@ -490,3 +490,73 @@ async def get_profile(user_id: str):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Fetch failed: {str(e)}")
+
+
+# =============================================================================
+# Demo Request Endpoints
+# =============================================================================
+
+class DemoRequestCreate(BaseModel):
+    """Request body for creating a demo request from landing page."""
+    name: str
+    email: str
+    company: str
+    telegram: str
+    source: Optional[str] = "landing_page"
+
+@app.post("/api/demo-request")
+async def create_demo_request(body: DemoRequestCreate):
+    """
+    Create a new demo request from the landing page.
+    Public endpoint (no auth required).
+    Stores request in database for follow-up.
+
+    Returns:
+        {"ok": true, "message": "..."}
+
+    Raises:
+        HTTPException: 400 for validation errors, 500 for database errors
+    """
+    from api._lib.supabase_admin import get_admin_client
+
+    # Validate email format
+    import re
+    email_pattern = r'^[^\s@]+@[^\s@]+\.[^\s@]+$'
+    if not re.match(email_pattern, body.email):
+        raise HTTPException(status_code=400, detail="Invalid email format")
+
+    # Validate required fields
+    if not body.name.strip():
+        raise HTTPException(status_code=400, detail="Name is required")
+    if not body.company.strip():
+        raise HTTPException(status_code=400, detail="Company is required")
+    if not body.telegram.strip():
+        raise HTTPException(status_code=400, detail="Telegram is required")
+
+    try:
+        supabase = get_admin_client()
+
+        # Create demo request record
+        demo_request = {
+            "name": body.name.strip(),
+            "email": body.email.strip().lower(),
+            "company": body.company.strip(),
+            "telegram": body.telegram.strip(),
+            "source": body.source,
+            "status": "new",
+        }
+
+        result = supabase.table("demo_requests").insert(demo_request).execute()
+
+        logger.info(
+            f"Demo request created - email={body.email}, company={body.company}, source={body.source}"
+        )
+
+        return {
+            "ok": True,
+            "message": "Спасибо! Мы свяжемся с вами в Telegram.",
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to create demo request - error={type(e).__name__}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to submit request")
