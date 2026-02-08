@@ -79,7 +79,6 @@ export function LoginForm({ prefillEmail = '' }: LoginFormProps) {
           // Has role - redirect to dashboard
           router.push('/dashboard');
         }
-        router.refresh();
       }
     } catch (err) {
       setError('Произошла ошибка. Попробуйте ещё раз.');

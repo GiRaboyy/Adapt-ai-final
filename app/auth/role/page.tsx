@@ -108,7 +108,6 @@ export default function RoleSelectionPage() {
 
       // Success - redirect to dashboard
       router.push('/dashboard');
-      router.refresh();
     } catch (err) {
       console.error('Unexpected error during role save:', err);
       setError('Произошла ошибка. Попробуйте ещё раз.');
@@ -129,8 +128,6 @@ export default function RoleSelectionPage() {
   if (noSession) {
     return (
       <AuthLayout
-        brandTitle="Последний шаг"
-        brandSubtitle="Выберите роль — и мы настроим интерфейс под ваши задачи."
         contentPadding="large"
       >
         <div className="text-center">
@@ -157,8 +154,6 @@ export default function RoleSelectionPage() {
 
   return (
     <AuthLayout
-      brandTitle="Последний шаг"
-      brandSubtitle="Выберите роль — и мы настроим интерфейс под ваши задачи."
       contentMaxWidth="lg"
       contentPadding="large"
     >
@@ -168,7 +163,7 @@ export default function RoleSelectionPage() {
           Выберите вашу роль
         </h1>
         <p className="text-gray-500 text-base">
-          Это займёт 5 секунд
+          Мы настроим интерфейс под ваши задачи
         </p>
       </div>
 
