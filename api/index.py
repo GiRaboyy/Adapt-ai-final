@@ -265,7 +265,9 @@ async def set_my_role(body: RoleUpdate, user: dict = Depends(get_current_user)):
 
         # Use UPSERT to atomically insert or update
         # Supabase upsert automatically handles ON CONFLICT
-        result = supabase.table("profiles").upsert(
+        # Note: In supabase-py, .select() after .upsert() is not supported
+        # We perform upsert first, then fetch the result with a separate SELECT
+        supabase.table("profiles").upsert(
             {
                 "id": user_id,
                 "email": user.get("email"),
@@ -273,16 +275,18 @@ async def set_my_role(body: RoleUpdate, user: dict = Depends(get_current_user)):
                 "role": body.role,
                 "org_id": None,
             }
-        ).select().execute()
+        ).execute()
+
+        # Fetch the updated profile with a separate SELECT query
+        result = supabase.table("profiles").select("*").eq("id", user_id).maybe_single().execute()
 
         # Check if we got data back
-        if result.data and len(result.data) > 0:
-            profile = result.data[0]
+        if result.data:
             logger.info(f"POST /api/profile/role - user_id={user_id}, role={body.role}, success=True")
-            return {"ok": True, "profile": profile}
+            return {"ok": True, "profile": result.data}
         else:
-            logger.error(f"POST /api/profile/role - user_id={user_id}, no data returned from upsert")
-            raise HTTPException(status_code=500, detail="No data returned from database")
+            logger.error(f"POST /api/profile/role - user_id={user_id}, profile not found after upsert")
+            raise HTTPException(status_code=500, detail="Profile not found after upsert")
 
     except HTTPException:
         raise
@@ -401,12 +405,16 @@ async def ensure_profile(profile: ProfileCreate):
             "role": profile.role,
             "org_id": None,
         }
-        
-        insert_result = supabase.table("profiles").insert(new_profile).execute()
-        
+
+        # Insert the profile (supabase-py doesn't support .select() after .insert())
+        supabase.table("profiles").insert(new_profile).execute()
+
+        # Fetch the inserted profile with a separate SELECT query
+        fetch_result = supabase.table("profiles").select("*").eq("id", profile.user_id).maybe_single().execute()
+
         return {
             "ok": True,
-            "profile": insert_result.data[0] if insert_result.data else new_profile,
+            "profile": fetch_result.data if fetch_result.data else new_profile,
             "created": True,
         }
         
@@ -436,15 +444,19 @@ async def update_profile(user_id: str, updates: ProfileUpdate):
         
         if not update_data:
             raise HTTPException(status_code=400, detail="No fields to update")
-        
-        result = supabase.table("profiles").update(update_data).eq("id", user_id).execute()
-        
+
+        # Perform update (supabase-py doesn't guarantee .data in response)
+        supabase.table("profiles").update(update_data).eq("id", user_id).execute()
+
+        # Fetch the updated profile with a separate SELECT query
+        result = supabase.table("profiles").select("*").eq("id", user_id).maybe_single().execute()
+
         if not result.data:
             raise HTTPException(status_code=404, detail="Profile not found")
-        
+
         return {
             "ok": True,
-            "profile": result.data[0],
+            "profile": result.data,
         }
         
     except HTTPException:
