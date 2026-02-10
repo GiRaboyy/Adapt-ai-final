@@ -4,6 +4,34 @@
 
 export type UserRole = 'curator' | 'employee';
 
+// ─── Course (Storage-based, no DB) ───────────────────────────────────────────
+
+export type CourseSize = 'small' | 'medium' | 'large';
+
+export type FileParseStatus = 'parsed' | 'skipped' | 'error';
+
+export type CourseOverallStatus = 'processing' | 'ready' | 'partial' | 'error';
+
+export interface CourseManifestFile {
+  name: string;          // original file name
+  type: string;          // MIME type
+  size: number;          // bytes
+  storagePath: string;   // path in bucket: {userId}/{courseId}/files/{name}
+  parseStatus: FileParseStatus;
+  parsedPath?: string;   // path in bucket: {userId}/{courseId}/parsed/{name}.txt
+  parseError?: string;
+}
+
+export interface CourseManifest {
+  courseId: string;
+  title: string;
+  size: CourseSize;
+  createdAt: string;          // ISO 8601
+  overallStatus: CourseOverallStatus;
+  textBytes: number;
+  files: CourseManifestFile[];
+}
+
 export interface Profile {
   id: string;
   org_id: string | null;

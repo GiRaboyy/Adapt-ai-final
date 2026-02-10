@@ -2,10 +2,10 @@
 FastAPI application entrypoint for Vercel serverless deployment.
 Provides health check endpoints for system monitoring.
 """
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 from api._lib.settings import settings
 from api._lib.auth import get_current_user
 from api._lib.logger import get_logger
@@ -560,3 +560,346 @@ async def create_demo_request(body: DemoRequestCreate):
     except Exception as e:
         logger.error(f"Failed to create demo request - error={type(e).__name__}: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to submit request")
+
+
+# =============================================================================
+# Courses Endpoints (Storage-based, no DB)
+# =============================================================================
+#
+# STORAGE SETUP REQUIRED:
+# Create a bucket named "courses" in your Supabase project:
+#   1. Go to Storage → Create bucket → Name: "courses", Public: false
+#   2. Set file size limit: 30MB
+#   3. Allowed MIME types: application/pdf, text/plain,
+#      application/vnd.openxmlformats-officedocument.wordprocessingml.document,
+#      application/msword
+#
+# File structure in bucket:
+#   {userId}/{courseId}/files/{filename}       ← original files
+#   {userId}/{courseId}/parsed/{filename}.txt  ← parsed text per file
+#   {userId}/{courseId}/parsed/combined.txt    ← all text combined
+#   {userId}/{courseId}/manifest.json          ← course metadata
+# =============================================================================
+
+COURSES_BUCKET = "courses"
+MAX_FILE_SIZE = 30 * 1024 * 1024  # 30MB
+ALLOWED_EXTENSIONS = {".pdf", ".txt", ".doc", ".docx"}
+ALLOWED_MIME_TYPES = {
+    "application/pdf",
+    "text/plain",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/msword",
+}
+
+
+def _parse_pdf_bytes(content: bytes) -> str:
+    """Extract text from PDF bytes using pypdf."""
+    try:
+        from pypdf import PdfReader
+        import io
+        reader = PdfReader(io.BytesIO(content))
+        texts = []
+        for page in reader.pages:
+            page_text = page.extract_text()
+            if page_text:
+                texts.append(page_text)
+        return "\n".join(texts)
+    except Exception as e:
+        raise ValueError(f"PDF parse error: {str(e)}")
+
+
+def _parse_docx_bytes(content: bytes) -> str:
+    """Extract text from DOCX bytes using python-docx."""
+    try:
+        from docx import Document
+        import io
+        doc = Document(io.BytesIO(content))
+        paragraphs = [para.text for para in doc.paragraphs if para.text.strip()]
+        return "\n".join(paragraphs)
+    except Exception as e:
+        raise ValueError(f"DOCX parse error: {str(e)}")
+
+
+def _parse_txt_bytes(content: bytes) -> str:
+    """Decode TXT bytes to string."""
+    for encoding in ("utf-8", "utf-16", "latin-1"):
+        try:
+            return content.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    return content.decode("latin-1", errors="replace")
+
+
+def _ensure_courses_bucket(supabase) -> None:
+    """Ensure the courses bucket exists. Creates it if missing."""
+    try:
+        buckets = supabase.storage.list_buckets()
+        exists = any(b.name == COURSES_BUCKET for b in buckets)
+        if not exists:
+            supabase.storage.create_bucket(
+                COURSES_BUCKET,
+                options={
+                    "public": False,
+                    "file_size_limit": MAX_FILE_SIZE,
+                    "allowed_mime_types": list(ALLOWED_MIME_TYPES),
+                },
+            )
+    except Exception as e:
+        logger.warning(f"Could not ensure bucket: {e}")
+
+
+class FileInfo(BaseModel):
+    name: str
+    originalName: str
+    storagePath: str
+    mimeType: str
+    size: int
+
+
+class CourseProcessRequest(BaseModel):
+    courseId: str
+    userId: str
+    title: str
+    size: str
+    files: List[FileInfo]
+
+
+class CourseManifestFile(BaseModel):
+    name: str
+    type: str
+    size: int
+    storagePath: str
+    parseStatus: str  # "parsed" | "skipped" | "error"
+    parsedPath: Optional[str] = None
+    parseError: Optional[str] = None
+
+
+class CourseManifest(BaseModel):
+    courseId: str
+    title: str
+    size: str
+    createdAt: str
+    overallStatus: str  # "ready" | "partial" | "error" | "processing"
+    textBytes: int
+    files: List[CourseManifestFile]
+
+
+@app.post("/api/courses/process")
+async def process_course(
+    body: CourseProcessRequest,
+    user: dict = Depends(get_current_user),
+):
+    """
+    Process uploaded course files: parse text, save results, create manifest.
+
+    Called after client has already uploaded files to Supabase Storage.
+    Downloads each file, parses it, saves parsed text and manifest.json.
+    """
+    import json
+    from datetime import datetime, timezone
+    from api._lib.supabase_admin import get_admin_client
+
+    log = get_logger(__name__)
+    user_id = user["id"]
+    course_id = body.courseId
+
+    log.info(f"POST /api/courses/process - userId={user_id}, courseId={course_id}")
+
+    # Security: ensure user can only process their own courses
+    if body.userId != user_id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    supabase = get_admin_client()
+    _ensure_courses_bucket(supabase)
+
+    parsed_files: List[CourseManifestFile] = []
+    combined_parts: List[str] = []
+    total_text_bytes = 0
+
+    for file_info in body.files:
+        file_path = file_info.storagePath
+        name_lower = file_info.originalName.lower()
+        ext = "." + name_lower.rsplit(".", 1)[-1] if "." in name_lower else ""
+
+        log.info(f"Processing file: {file_info.originalName} (ext={ext})")
+
+        # Download file from Storage
+        try:
+            file_bytes = supabase.storage.from_(COURSES_BUCKET).download(file_path)
+        except Exception as e:
+            log.error(f"Failed to download {file_path}: {e}")
+            parsed_files.append(CourseManifestFile(
+                name=file_info.originalName,
+                type=file_info.mimeType,
+                size=file_info.size,
+                storagePath=file_path,
+                parseStatus="error",
+                parseError=f"Download failed: {str(e)}",
+            ))
+            continue
+
+        # Parse based on extension
+        parsed_text: Optional[str] = None
+        parse_status = "parsed"
+        parse_error: Optional[str] = None
+
+        try:
+            if ext == ".pdf":
+                parsed_text = _parse_pdf_bytes(file_bytes)
+            elif ext in (".txt",):
+                parsed_text = _parse_txt_bytes(file_bytes)
+            elif ext == ".docx":
+                parsed_text = _parse_docx_bytes(file_bytes)
+            elif ext == ".doc":
+                parse_status = "skipped"
+                parse_error = ".doc загружен, парсинг будет позже"
+            else:
+                parse_status = "skipped"
+                parse_error = f"Неподдерживаемый формат: {ext}"
+        except ValueError as e:
+            parse_status = "error"
+            parse_error = str(e)
+            log.warning(f"Parse error for {file_info.originalName}: {e}")
+
+        # Save parsed text to Storage
+        parsed_path: Optional[str] = None
+        if parsed_text is not None:
+            parsed_path = f"{user_id}/{course_id}/parsed/{file_info.name}.txt"
+            text_bytes = parsed_text.encode("utf-8")
+            total_text_bytes += len(text_bytes)
+            try:
+                supabase.storage.from_(COURSES_BUCKET).upload(
+                    parsed_path,
+                    text_bytes,
+                    {"content-type": "text/plain; charset=utf-8", "upsert": "true"},
+                )
+                combined_parts.append(
+                    f"=== {file_info.originalName} ===\n{parsed_text}"
+                )
+            except Exception as e:
+                log.error(f"Failed to save parsed text for {file_info.originalName}: {e}")
+                parse_error = f"Parsed text save failed: {str(e)}"
+
+        parsed_files.append(CourseManifestFile(
+            name=file_info.originalName,
+            type=file_info.mimeType,
+            size=file_info.size,
+            storagePath=file_path,
+            parseStatus=parse_status,
+            parsedPath=parsed_path,
+            parseError=parse_error,
+        ))
+
+    # Save combined.txt
+    if combined_parts:
+        combined_text = "\n\n".join(combined_parts).encode("utf-8")
+        combined_path = f"{user_id}/{course_id}/parsed/combined.txt"
+        try:
+            supabase.storage.from_(COURSES_BUCKET).upload(
+                combined_path,
+                combined_text,
+                {"content-type": "text/plain; charset=utf-8", "upsert": "true"},
+            )
+        except Exception as e:
+            log.error(f"Failed to save combined.txt: {e}")
+
+    # Determine overall status
+    statuses = [f.parseStatus for f in parsed_files]
+    if all(s == "parsed" for s in statuses):
+        overall_status = "ready"
+    elif any(s == "error" for s in statuses):
+        overall_status = "partial" if any(s == "parsed" for s in statuses) else "error"
+    else:
+        overall_status = "ready"
+
+    # Build and save manifest
+    manifest = CourseManifest(
+        courseId=course_id,
+        title=body.title,
+        size=body.size,
+        createdAt=datetime.now(timezone.utc).isoformat(),
+        overallStatus=overall_status,
+        textBytes=total_text_bytes,
+        files=[f.model_dump() for f in parsed_files],
+    )
+
+    manifest_path = f"{user_id}/{course_id}/manifest.json"
+    manifest_bytes = json.dumps(manifest.model_dump(), ensure_ascii=False, indent=2).encode("utf-8")
+
+    try:
+        supabase.storage.from_(COURSES_BUCKET).upload(
+            manifest_path,
+            manifest_bytes,
+            {"content-type": "application/json", "upsert": "true"},
+        )
+    except Exception as e:
+        log.error(f"Failed to save manifest: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to save manifest: {str(e)}")
+
+    log.info(f"Course processed - courseId={course_id}, status={overall_status}, files={len(parsed_files)}")
+
+    return {
+        "ok": True,
+        "manifest": manifest.model_dump(),
+    }
+
+
+@app.get("/api/courses/list")
+async def list_courses(user: dict = Depends(get_current_user)):
+    """
+    List all courses for the authenticated user.
+    Reads manifest.json from Storage for each course folder.
+    Returns courses sorted by createdAt descending.
+    """
+    import json
+    from api._lib.supabase_admin import get_admin_client
+
+    log = get_logger(__name__)
+    user_id = user["id"]
+
+    log.info(f"GET /api/courses/list - userId={user_id}")
+
+    supabase = get_admin_client()
+    _ensure_courses_bucket(supabase)
+
+    # List course folders for this user
+    try:
+        items = supabase.storage.from_(COURSES_BUCKET).list(user_id)
+    except Exception as e:
+        log.error(f"Failed to list courses for user {user_id}: {e}")
+        return {"ok": True, "courses": []}
+
+    if not items:
+        return {"ok": True, "courses": []}
+
+    courses = []
+    for item in items:
+        # Each item is a folder representing a courseId
+        course_id = item.get("name") if isinstance(item, dict) else getattr(item, "name", None)
+        if not course_id:
+            continue
+
+        # Try to download manifest.json
+        manifest_path = f"{user_id}/{course_id}/manifest.json"
+        try:
+            manifest_bytes = supabase.storage.from_(COURSES_BUCKET).download(manifest_path)
+            manifest = json.loads(manifest_bytes.decode("utf-8"))
+            courses.append(manifest)
+        except Exception as e:
+            log.warning(f"Could not read manifest for course {course_id}: {e}")
+            # Include a placeholder for courses without manifest
+            courses.append({
+                "courseId": course_id,
+                "title": "Неполный курс",
+                "size": "unknown",
+                "createdAt": "",
+                "overallStatus": "error",
+                "textBytes": 0,
+                "files": [],
+            })
+            continue
+
+    # Sort by createdAt descending (newest first)
+    courses.sort(key=lambda c: c.get("createdAt", ""), reverse=True)
+
+    return {"ok": True, "courses": courses}

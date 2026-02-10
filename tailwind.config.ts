@@ -12,6 +12,7 @@ const config: Config = {
       fontFamily: {
         sans: ['var(--font-inter)', 'Inter', 'system-ui', 'sans-serif'],
         display: ['var(--font-display)', 'system-ui', 'sans-serif'],
+        gertika: ['var(--font-tt-gertika)', 'system-ui', 'sans-serif'],
       },
       colors: {
         lime: {

@@ -28,6 +28,7 @@ export async function middleware(request: NextRequest) {
 
   const isAuthPage = pathname.startsWith('/auth');
   const isDashboard = pathname.startsWith('/dashboard');
+  const isCurator = pathname.startsWith('/curator');
 
   // If user is logged in and trying to access auth pages, redirect based on role
   if (user && isAuthPage) {
@@ -64,13 +65,13 @@ export async function middleware(request: NextRequest) {
   }
 
   // Protected routes - require authentication and role
-  if (isDashboard) {
+  if (isCurator || isDashboard) {
     if (!user) {
       return NextResponse.redirect(new URL('/auth', request.url));
     }
 
-    // Check if user is coming from password recovery
-    const fromRecovery = request.nextUrl.searchParams.get('from') === 'recovery';
+    // Check if user is coming from password recovery (only applicable for /dashboard)
+    const fromRecovery = isDashboard && request.nextUrl.searchParams.get('from') === 'recovery';
 
     if (fromRecovery) {
       // User just completed password reset - skip role check and clean up URL
