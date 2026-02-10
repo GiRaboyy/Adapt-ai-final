@@ -19,17 +19,17 @@ const manrope = Manrope({
 const ttGertika = localFont({
   src: [
     {
-      path: '../public/fonts/tt_gertika/TT_Gertika_Trial_Regular.ttf',
+      path: './fonts/tt_gertika/TT_Gertika_Trial_Regular.ttf',
       weight: '400',
       style: 'normal',
     },
     {
-      path: '../public/fonts/tt_gertika/TT_Gertika_Trial_Bold.ttf',
+      path: './fonts/tt_gertika/TT_Gertika_Trial_Bold.ttf',
       weight: '700',
       style: 'normal',
     },
     {
-      path: '../public/fonts/tt_gertika/TT_Gertika_Trial_Black.ttf',
+      path: './fonts/tt_gertika/TT_Gertika_Trial_Black.ttf',
       weight: '900',
       style: 'normal',
     },
