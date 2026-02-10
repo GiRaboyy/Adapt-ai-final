@@ -9,21 +9,23 @@ const nextConfig = {
     '@supabase/realtime-js',
   ],
 
-  experimental: {
-    // Exclude directories that are never needed inside Next.js serverless functions:
-    // - api/** is Python code, irrelevant to JS functions
-    // - .venv/** / venv/** are local Python virtual envs
-    // - build tooling (@swc, webpack) is only needed at build time
-    outputFileTracingExcludes: {
-      '*': [
-        'node_modules/@swc/**',
-        'node_modules/webpack/**',
-        '.git/**',
-        'api/**',
-        '.venv/**',
-        'venv/**',
-      ],
-    },
+  // NOTE: in Next.js 15 this key lives at root level, NOT inside experimental.
+  // Exclude files that are never needed inside serverless functions at runtime:
+  // - @next/swc-* : platform-specific SWC compiler binaries (100-150 MB each!)
+  //   On Linux/Vercel, @next/swc-linux-x64-gnu is installed and can end up traced.
+  // - api/**      : Python FastAPI code — irrelevant to JS functions
+  // - .venv/**    : local Python virtual env
+  // - webpack/**  : build-time only
+  outputFileTracingExcludes: {
+    '*': [
+      'node_modules/@next/swc-*/**',
+      'node_modules/@swc/**',
+      'node_modules/webpack/**',
+      '.git/**',
+      'api/**',
+      '.venv/**',
+      'venv/**',
+    ],
   },
 }
 
