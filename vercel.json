@@ -2,7 +2,8 @@
   "functions": {
     "api/index.py": {
       "runtime": "@vercel/python@4.3.1",
-      "includeFiles": "api/**"
+      "includeFiles": "api/**",
+      "excludeFiles": "{.next,node_modules,public,app,components,lib,hooks,.git,.venv,venv}/**"
     }
   },
   "rewrites": [
