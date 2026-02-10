@@ -1,7 +1,8 @@
 {
   "functions": {
     "api/index.py": {
-      "runtime": "@vercel/python@4.3.1"
+      "runtime": "@vercel/python@4.3.1",
+      "includeFiles": "api/**"
     }
   },
   "rewrites": [

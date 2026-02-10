@@ -1,0 +1,16 @@
+.venv
+venv
+node_modules
+.next
+out
+build
+public
+.env.local
+.env.*.local
+.vercel
+.DS_Store
+.git
+coverage
+*.md
+design_sys.png
+tsconfig.tsbuildinfo
