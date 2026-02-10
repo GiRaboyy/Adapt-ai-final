@@ -16,6 +16,12 @@ const nextConfig = {
   // - api/**      : Python FastAPI code — irrelevant to JS functions
   // - .venv/**    : local Python virtual env
   // - webpack/**  : build-time only
+  // Force-include Next.js compiled OpenTelemetry (required at runtime by tracer.js).
+  // In Next.js 15.5+ the file tracer doesn't always pick this up automatically.
+  outputFileTracingIncludes: {
+    '*': ['./node_modules/next/dist/compiled/@opentelemetry/**/*'],
+  },
+
   outputFileTracingExcludes: {
     '*': [
       'node_modules/@next/swc-*/**',
