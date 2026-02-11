@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Menu, X } from "lucide-react";
 import Link from "next/link";
+import { createClient } from "@/lib/supabase/client";
 
 const navLinks = [
   { label: "Главная", href: "#home" },
@@ -12,6 +13,13 @@ const navLinks = [
 
 export function Header({ onBookCall }: { onBookCall: () => void }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [authed, setAuthed] = useState(false);
+
+  useEffect(() => {
+    createClient().auth.getSession().then(({ data }) => {
+      setAuthed(!!data.session);
+    });
+  }, []);
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-[#0B0B0F]/90 backdrop-blur-xl">
@@ -41,12 +49,21 @@ export function Header({ onBookCall }: { onBookCall: () => void }) {
 
         {/* Desktop CTA */}
         <div className="hidden items-center gap-3 md:flex">
-          <Link
-            href="/auth"
-            className="rounded-full border border-white/15 px-6 py-2.5 text-sm font-medium text-white/70 transition-all hover:border-white/30 hover:text-white"
-          >
-            Войти
-          </Link>
+          {authed ? (
+            <Link
+              href="/dashboard"
+              className="rounded-full bg-lime px-6 py-2.5 text-sm font-bold text-[#0B0B0F] transition-all hover:bg-lime/90"
+            >
+              Кабинет
+            </Link>
+          ) : (
+            <Link
+              href="/auth"
+              className="rounded-full border border-white/15 px-6 py-2.5 text-sm font-medium text-white/70 transition-all hover:border-white/30 hover:text-white"
+            >
+              Войти
+            </Link>
+          )}
           <button
             onClick={onBookCall}
             type="button"
@@ -81,13 +98,23 @@ export function Header({ onBookCall }: { onBookCall: () => void }) {
                 {link.label}
               </a>
             ))}
-            <Link
-              href="/auth"
-              onClick={() => setMenuOpen(false)}
-              className="rounded-lg px-3 py-3 text-sm text-white/60 transition-colors hover:bg-white/5 hover:text-white"
-            >
-              Войти
-            </Link>
+            {authed ? (
+              <Link
+                href="/dashboard"
+                onClick={() => setMenuOpen(false)}
+                className="rounded-lg px-3 py-3 text-sm font-medium text-lime transition-colors hover:bg-white/5"
+              >
+                Кабинет
+              </Link>
+            ) : (
+              <Link
+                href="/auth"
+                onClick={() => setMenuOpen(false)}
+                className="rounded-lg px-3 py-3 text-sm text-white/60 transition-colors hover:bg-white/5 hover:text-white"
+              >
+                Войти
+              </Link>
+            )}
             <button
               type="button"
               onClick={() => {

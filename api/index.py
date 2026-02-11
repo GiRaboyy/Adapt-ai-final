@@ -40,6 +40,8 @@ async def health_check():
         "ok": True,
         "build": settings.git_sha,
         "env": settings.environment,
+        "vercel_env": settings.vercel_env,
+        "vercel_url": settings.vercel_url,
     }
 
 

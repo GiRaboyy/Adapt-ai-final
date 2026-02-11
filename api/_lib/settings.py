@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     
     # Git commit SHA (optional, injected by Vercel)
     git_sha: str = "unknown"
+
+    # Vercel deployment metadata
+    vercel_env: str = "local"
+    vercel_url: str = ""
     
     class Config:
         env_file = ".env.local"
@@ -31,4 +35,6 @@ settings = Settings(
     supabase_service_role_key=os.getenv("SUPABASE_SERVICE_ROLE_KEY", ""),
     environment=os.getenv("ENVIRONMENT", "local"),  # type: ignore
     git_sha=os.getenv("GIT_SHA", os.getenv("VERCEL_GIT_COMMIT_SHA", "unknown")),
+    vercel_env=os.getenv("VERCEL_ENV", "local"),
+    vercel_url=os.getenv("VERCEL_URL", ""),
 )

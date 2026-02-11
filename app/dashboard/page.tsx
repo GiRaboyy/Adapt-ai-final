@@ -54,6 +54,12 @@ export default async function DashboardPage() {
   // Use role from profile or default to curator
   const role = profile?.role || 'curator';
   const isCurator = role === 'curator';
+
+  // Curators have a dedicated cabinet — send them there directly
+  if (isCurator) {
+    redirect('/curator/courses');
+  }
+
   const displayName = profile?.full_name || user.user_metadata?.full_name || 'Пользователь';
   const displayEmail = profile?.email || user.email;
 
