@@ -76,26 +76,14 @@ function getFileExt(name: string): string {
 }
 
 /**
- * Sanitize a filename for use as a Supabase Storage object key segment.
- * - Normalizes Unicode (NFD → removes diacritics)
- * - Replaces spaces with underscores
- * - Strips anything that isn't [a-zA-Z0-9._-]
- * - Trims to 80 chars (before extension) so paths stay short
+ * Build a safe Supabase Storage key for a file.
+ * Uses a fresh UUID so the path never contains spaces, Cyrillic, or other
+ * characters that Supabase rejects after URL-decoding.
+ * The original filename is preserved separately for display purposes.
  */
-function safeFileName(original: string): string {
-  // Preserve extension
-  const dotIdx = original.lastIndexOf('.');
-  const base = dotIdx > 0 ? original.slice(0, dotIdx) : original;
-  const ext = dotIdx > 0 ? original.slice(dotIdx) : '';
-
-  const sanitized = base
-    .normalize('NFD')                     // decompose accented chars
-    .replace(/[\u0300-\u036f]/g, '')      // strip combining marks
-    .replace(/\s+/g, '_')                 // spaces → underscores
-    .replace(/[^a-zA-Z0-9._-]/g, '')     // remove everything else
-    .slice(0, 80);                        // limit base length
-
-  return (sanitized || 'file') + ext.toLowerCase();
+function safeStorageKey(originalName: string): string {
+  const ext = getFileExt(originalName); // already lower-cased, e.g. ".pdf"
+  return `${crypto.randomUUID()}${ext}`;
 }
 
 /** Infer MIME type from extension when file.type is empty or incorrect. */
@@ -235,8 +223,8 @@ export function CreateCourseDialog({
 
       const entry = files[i];
       const contentType = guessContentType(entry.file);
-      // Sanitize: no cyrillic/special chars, uuid prefix prevents collisions
-      const safeKey = `${entry.id}-${safeFileName(entry.file.name)}`;
+      // UUID-only key: no filename in the path → no Cyrillic/spaces issues
+      const safeKey = safeStorageKey(entry.file.name);
       const storagePath = `${userId}/${courseId}/files/${safeKey}`;
 
       setStepMessage(`Загружаем файл ${i + 1} из ${files.length}: ${entry.file.name}`);
