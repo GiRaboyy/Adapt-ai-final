@@ -75,6 +75,42 @@ function getFileExt(name: string): string {
   return parts.length > 1 ? `.${parts[parts.length - 1]}` : '';
 }
 
+/**
+ * Sanitize a filename for use as a Supabase Storage object key segment.
+ * - Normalizes Unicode (NFD → removes diacritics)
+ * - Replaces spaces with underscores
+ * - Strips anything that isn't [a-zA-Z0-9._-]
+ * - Trims to 80 chars (before extension) so paths stay short
+ */
+function safeFileName(original: string): string {
+  // Preserve extension
+  const dotIdx = original.lastIndexOf('.');
+  const base = dotIdx > 0 ? original.slice(0, dotIdx) : original;
+  const ext = dotIdx > 0 ? original.slice(dotIdx) : '';
+
+  const sanitized = base
+    .normalize('NFD')                     // decompose accented chars
+    .replace(/[\u0300-\u036f]/g, '')      // strip combining marks
+    .replace(/\s+/g, '_')                 // spaces → underscores
+    .replace(/[^a-zA-Z0-9._-]/g, '')     // remove everything else
+    .slice(0, 80);                        // limit base length
+
+  return (sanitized || 'file') + ext.toLowerCase();
+}
+
+/** Infer MIME type from extension when file.type is empty or incorrect. */
+function guessContentType(file: File): string {
+  if (file.type && file.type !== 'application/octet-stream') return file.type;
+  const ext = getFileExt(file.name);
+  const map: Record<string, string> = {
+    '.pdf':  'application/pdf',
+    '.txt':  'text/plain',
+    '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    '.doc':  'application/msword',
+  };
+  return map[ext] ?? 'application/octet-stream';
+}
+
 function validateFile(file: File): string | null {
   const ext = getFileExt(file.name);
   if (!ALLOWED_EXTENSIONS.includes(ext)) {
@@ -125,7 +161,8 @@ export function CreateCourseDialog({
     title.trim().length > 0 &&
     courseSize !== undefined &&
     files.length > 0 &&
-    files.every((f) => f.uploadStatus !== 'error');
+    // At least one file must not be in error state (allow partial failures)
+    files.some((f) => f.uploadStatus !== 'error');
 
   // ─── File handling ─────────────────────────────────────────────────────────
 
@@ -197,7 +234,10 @@ export function CreateCourseDialog({
       if (abortRef.current) break;
 
       const entry = files[i];
-      const storagePath = `${userId}/${courseId}/files/${entry.file.name}`;
+      const contentType = guessContentType(entry.file);
+      // Sanitize: no cyrillic/special chars, uuid prefix prevents collisions
+      const safeKey = `${entry.id}-${safeFileName(entry.file.name)}`;
+      const storagePath = `${userId}/${courseId}/files/${safeKey}`;
 
       setStepMessage(`Загружаем файл ${i + 1} из ${files.length}: ${entry.file.name}`);
       setFiles((prev) =>
@@ -211,10 +251,18 @@ export function CreateCourseDialog({
           .from(COURSES_BUCKET)
           .upload(storagePath, entry.file, {
             upsert: true,
-            contentType: entry.file.type || 'application/octet-stream',
+            contentType,
           });
 
-        if (error) throw new Error(error.message);
+        if (error) {
+          console.error('[Storage upload error]', {
+            file: entry.file.name,
+            storagePath,
+            contentType,
+            error,
+          });
+          throw new Error(`[${error.statusCode ?? 'ERR'}] ${error.message}`);
+        }
 
         setFiles((prev) =>
           prev.map((f) =>
@@ -225,14 +273,15 @@ export function CreateCourseDialog({
         );
 
         uploadedFiles.push({
-          name: entry.file.name,
+          name: safeKey,
           originalName: entry.file.name,
           storagePath,
-          mimeType: entry.file.type || 'application/octet-stream',
+          mimeType: contentType,
           size: entry.file.size,
         });
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
+        console.error('[Upload failed]', entry.file.name, msg);
         setFiles((prev) =>
           prev.map((f) =>
             f.id === entry.id
@@ -240,7 +289,7 @@ export function CreateCourseDialog({
               : f
           )
         );
-        // Continue with other files; backend will mark this one as error
+        // Continue with other files
       }
     }
 
@@ -251,7 +300,10 @@ export function CreateCourseDialog({
     }
 
     if (uploadedFiles.length === 0) {
-      setPipelineError('Ни один файл не был загружен успешно.');
+      const firstError = files.find((f) => f.uploadError)?.uploadError ?? '';
+      setPipelineError(
+        `Ни один файл не был загружен успешно.${firstError ? ` Ошибка: ${firstError}` : ''} Проверьте консоль браузера (F12 → Console) для деталей.`
+      );
       setStep('error');
       return;
     }

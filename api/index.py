@@ -633,7 +633,13 @@ def _parse_txt_bytes(content: bytes) -> str:
 
 
 def _ensure_courses_bucket(supabase) -> None:
-    """Ensure the courses bucket exists. Creates it if missing."""
+    """Ensure the courses bucket exists. Creates/updates it without MIME restrictions.
+
+    We intentionally do NOT set allowed_mime_types here — MIME validation is
+    performed at the application level. Setting it on the bucket has caused
+    InvalidMimeType 415 errors (e.g. when the browser reports an empty or
+    vendor-prefixed MIME type for DOCX files).
+    """
     try:
         buckets = supabase.storage.list_buckets()
         exists = any(b.name == COURSES_BUCKET for b in buckets)
@@ -643,9 +649,25 @@ def _ensure_courses_bucket(supabase) -> None:
                 options={
                     "public": False,
                     "file_size_limit": MAX_FILE_SIZE,
-                    "allowed_mime_types": list(ALLOWED_MIME_TYPES),
+                    # No allowed_mime_types — allow all; app validates by extension.
                 },
             )
+            logger.info(f"Created bucket '{COURSES_BUCKET}'")
+        else:
+            # If the bucket already exists with stale allowed_mime_types restrictions
+            # (e.g. created without the application/ prefix), clear them so uploads
+            # are not blocked at the storage layer.
+            try:
+                supabase.storage.update_bucket(
+                    COURSES_BUCKET,
+                    options={
+                        "public": False,
+                        "file_size_limit": MAX_FILE_SIZE,
+                        "allowed_mime_types": [],  # empty = no restriction
+                    },
+                )
+            except Exception as update_err:
+                logger.warning(f"Could not update bucket mime settings (non-fatal): {update_err}")
     except Exception as e:
         logger.warning(f"Could not ensure bucket: {e}")
 
