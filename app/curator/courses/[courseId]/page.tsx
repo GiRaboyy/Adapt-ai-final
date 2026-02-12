@@ -15,6 +15,7 @@ import {
   File,
   AlertCircle,
   CheckCircle2,
+  Calendar,
 } from 'lucide-react';
 import { CourseManifest, CourseManifestFile } from '@/lib/types';
 import { apiFetch } from '@/lib/api';
@@ -30,16 +31,16 @@ const SIZE_LABELS: Record<string, string> = {
 };
 
 const STATUS_COLORS: Record<string, string> = {
-  ready: 'bg-emerald-100 text-emerald-700',
-  partial: 'bg-orange-100 text-orange-700',
-  error: 'bg-red-100 text-red-600',
-  processing: 'bg-yellow-100 text-yellow-700',
+  ready:      'bg-[#C8F65D]/20 text-[#3d6000]',
+  partial:    'bg-orange-100 text-orange-700',
+  error:      'bg-red-100 text-red-600',
+  processing: 'bg-amber-100 text-amber-700',
 };
 
 const STATUS_LABELS: Record<string, string> = {
-  ready: 'Готов',
-  partial: 'Частично',
-  error: 'Ошибка',
+  ready:      'Готов',
+  partial:    'Частично',
+  error:      'Ошибка',
   processing: 'Обработка',
 };
 
@@ -49,12 +50,20 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} МБ`;
 }
 
+function formatDate(iso: string): string {
+  if (!iso) return '—';
+  try {
+    return new Intl.DateTimeFormat('ru-RU', {
+      day: 'numeric', month: 'short', year: 'numeric',
+    }).format(new Date(iso));
+  } catch { return '—'; }
+}
+
 function fileIcon(name: string) {
   const ext = name.toLowerCase().split('.').pop() ?? '';
-  if (ext === 'pdf') return <FileText size={16} className="text-red-400 shrink-0" />;
-  if (ext === 'docx' || ext === 'doc')
-    return <FileText size={16} className="text-blue-400 shrink-0" />;
-  return <File size={16} className="text-gray-400 shrink-0" />;
+  if (ext === 'pdf') return <FileText size={15} className="text-red-400 shrink-0" />;
+  if (ext === 'docx' || ext === 'doc') return <FileText size={15} className="text-blue-400 shrink-0" />;
+  return <File size={15} className="text-gray-400 shrink-0" />;
 }
 
 // ─── Tab types ────────────────────────────────────────────────────────────────
@@ -62,10 +71,10 @@ function fileIcon(name: string) {
 type Tab = 'training' | 'employees' | 'analytics' | 'materials';
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
-  { id: 'training', label: 'Тренинг', icon: <BookOpen size={15} /> },
-  { id: 'employees', label: 'Сотрудники', icon: <Users size={15} /> },
-  { id: 'analytics', label: 'Аналитика', icon: <BarChart2 size={15} /> },
-  { id: 'materials', label: 'Материалы', icon: <Files size={15} /> },
+  { id: 'training',  label: 'Тренинг',     icon: <BookOpen size={14} /> },
+  { id: 'employees', label: 'Сотрудники',  icon: <Users size={14} /> },
+  { id: 'analytics', label: 'Аналитика',   icon: <BarChart2 size={14} /> },
+  { id: 'materials', label: 'Материалы',   icon: <Files size={14} /> },
 ];
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
@@ -86,11 +95,8 @@ export default function CourseDetailPage() {
     apiFetch(`/api/courses/${courseId}`)
       .then((r) => r.json())
       .then((data) => {
-        if (data.ok) {
-          setManifest(data.manifest as CourseManifest);
-        } else {
-          setError('Курс не найден');
-        }
+        if (data.ok) setManifest(data.manifest as CourseManifest);
+        else setError('Курс не найден');
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
@@ -107,31 +113,29 @@ export default function CourseDetailPage() {
   // ── Loading ──────────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="px-8 py-8 max-w-5xl">
-        <Skeleton className="h-5 w-32 rounded-lg mb-6" />
-        <Skeleton className="h-8 w-64 rounded-xl mb-4" />
-        <div className="flex gap-3 mb-8">
-          <Skeleton className="h-6 w-20 rounded-full" />
-          <Skeleton className="h-6 w-20 rounded-full" />
-        </div>
+      <div className="max-w-[960px] mx-auto px-6 py-6">
+        <Skeleton className="h-4 w-36 rounded-lg mb-6" />
+        <Skeleton className="h-8 w-72 rounded-xl mb-3" />
         <div className="flex gap-2 mb-6">
-          {TABS.map((t) => (
-            <Skeleton key={t.id} className="h-9 w-28 rounded-xl" />
-          ))}
+          <Skeleton className="h-6 w-16 rounded-full" />
+          <Skeleton className="h-6 w-16 rounded-full" />
         </div>
-        <Skeleton className="h-64 rounded-2xl" />
+        <Skeleton className="h-10 w-80 rounded-xl mb-6" />
+        <Skeleton className="h-60 rounded-2xl" />
       </div>
     );
   }
 
   if (error || !manifest) {
     return (
-      <div className="px-8 py-16 flex flex-col items-center gap-4 text-center">
-        <AlertCircle size={40} className="text-red-400" />
-        <p className="text-gray-600">{error || 'Курс не найден'}</p>
+      <div className="max-w-[960px] mx-auto px-6 py-20 flex flex-col items-center gap-4 text-center">
+        <div className="w-12 h-12 rounded-2xl bg-red-50 flex items-center justify-center">
+          <AlertCircle size={22} className="text-red-400" />
+        </div>
+        <p className="text-[15px] text-gray-600">{error || 'Курс не найден'}</p>
         <button
           onClick={() => router.push('/curator/courses')}
-          className="text-sm text-lime font-medium hover:underline"
+          className="text-[13px] font-medium text-lime hover:brightness-90 transition-colors"
         >
           ← Вернуться к курсам
         </button>
@@ -144,64 +148,70 @@ export default function CourseDetailPage() {
   const sizeLabel = SIZE_LABELS[manifest.size] ?? manifest.size;
 
   return (
-    <div className="px-8 py-8 max-w-5xl">
+    <div className="max-w-[960px] mx-auto px-6 py-6">
       {/* Breadcrumb */}
       <button
         onClick={() => router.push('/curator/courses')}
-        className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-700 transition-colors mb-6"
+        className="inline-flex items-center gap-1.5 text-[13px] text-gray-400 hover:text-gray-700 transition-colors mb-5"
       >
-        <ChevronLeft size={15} />
+        <ChevronLeft size={14} />
         Мои курсы
       </button>
 
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4 mb-6">
-        <div className="flex-1 min-w-0">
-          <h1 className="text-2xl font-bold text-gray-900 mb-3 leading-tight">
-            {manifest.title}
-          </h1>
-          <div className="flex flex-wrap items-center gap-2">
-            <span
-              className={cn(
-                'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium',
-                statusColor
-              )}
-            >
-              {statusLabel}
-            </span>
-            <span className="text-xs text-gray-400 font-medium px-2 py-0.5 bg-gray-50 rounded-full border border-gray-100">
-              {sizeLabel}
-            </span>
-            <span className="flex items-center gap-1 text-xs text-gray-500">
-              <Files size={12} />
-              {manifest.files.length} файлов
-            </span>
-            <span className="flex items-center gap-1 text-xs text-gray-500">
-              <Users size={12} />
-              {manifest.employeesCount ?? 0} сотрудников
-            </span>
-          </div>
-        </div>
+      {/* Header card */}
+      <div className="bg-white rounded-2xl border border-neutral-200/80 p-6 mb-5 shadow-sm">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1 min-w-0">
+            {/* Title + badges */}
+            <div className="flex flex-wrap items-center gap-2 mb-2">
+              <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium', statusColor)}>
+                {statusLabel}
+              </span>
+              <span className="text-[11px] font-medium text-gray-400 bg-gray-50 rounded-full px-2 py-0.5 border border-gray-100">
+                {sizeLabel}
+              </span>
+            </div>
+            <h1 className="text-[20px] font-bold text-gray-900 leading-tight mb-4">
+              {manifest.title}
+            </h1>
 
-        {/* Invite code */}
-        <button
-          onClick={copyCode}
-          className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-mono text-gray-700 hover:bg-lime/10 hover:border-lime/30 transition-colors shadow-sm shrink-0"
-          title="Скопировать код для сотрудников"
-        >
-          <Copy size={13} />
-          {codeCopied ? 'Скопировано!' : manifest.inviteCode}
-        </button>
+            {/* Meta row */}
+            <div className="flex flex-wrap items-center gap-4 text-[12px] text-gray-500">
+              <span className="flex items-center gap-1.5">
+                <Files size={13} className="text-gray-400" />
+                {manifest.files.length} {manifest.files.length === 1 ? 'файл' : manifest.files.length < 5 ? 'файла' : 'файлов'}
+              </span>
+              <span className="flex items-center gap-1.5">
+                <Users size={13} className="text-gray-400" />
+                {manifest.employeesCount ?? 0} сотрудников
+              </span>
+              <span className="flex items-center gap-1.5">
+                <Calendar size={13} className="text-gray-400" />
+                {formatDate(manifest.createdAt)}
+              </span>
+            </div>
+          </div>
+
+          {/* Invite code */}
+          <button
+            onClick={copyCode}
+            className="flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2 text-[12px] font-mono text-gray-600 hover:bg-lime/10 hover:border-lime/30 hover:text-[#0B0B0F] transition-colors shadow-sm shrink-0"
+            title="Скопировать код для сотрудников"
+          >
+            <Copy size={12} />
+            {codeCopied ? 'Скопировано!' : manifest.inviteCode}
+          </button>
+        </div>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 p-1 bg-gray-100 rounded-xl w-fit mb-6">
+      <div className="flex gap-0.5 p-1 bg-gray-100 rounded-xl w-fit mb-5">
         {TABS.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
             className={cn(
-              'flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-all',
+              'flex items-center gap-2 rounded-lg px-4 py-2 text-[13px] font-medium transition-all',
               activeTab === tab.id
                 ? 'bg-white text-gray-900 shadow-sm'
                 : 'text-gray-500 hover:text-gray-700'
@@ -214,7 +224,7 @@ export default function CourseDetailPage() {
       </div>
 
       {/* Tab content */}
-      {activeTab === 'training' && <TrainingTab />}
+      {activeTab === 'training'  && <TrainingTab />}
       {activeTab === 'employees' && <EmployeesTab count={manifest.employeesCount ?? 0} />}
       {activeTab === 'analytics' && <AnalyticsTab />}
       {activeTab === 'materials' && (
@@ -224,68 +234,66 @@ export default function CourseDetailPage() {
   );
 }
 
-// ─── Tab: Training ────────────────────────────────────────────────────────────
+// ─── Shared empty state ───────────────────────────────────────────────────────
+
+function TabEmptyState({
+  icon,
+  iconBg,
+  title,
+  description,
+}: {
+  icon: React.ReactNode;
+  iconBg: string;
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-neutral-200/80 bg-white shadow-sm">
+      <div className="flex flex-col items-center gap-4 py-14 text-center px-8">
+        <div className={cn('w-12 h-12 rounded-2xl flex items-center justify-center', iconBg)}>
+          {icon}
+        </div>
+        <div>
+          <h2 className="text-[15px] font-semibold text-gray-800 mb-1">{title}</h2>
+          <p className="text-[13px] text-gray-400 max-w-[280px] leading-relaxed">{description}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Tabs ─────────────────────────────────────────────────────────────────────
 
 function TrainingTab() {
   return (
-    <div className="rounded-2xl border border-gray-100 bg-white p-8 shadow-sm">
-      <div className="flex flex-col items-center gap-4 py-8 text-center">
-        <div className="w-14 h-14 rounded-2xl bg-lime/10 flex items-center justify-center">
-          <BookOpen size={24} className="text-lime" strokeWidth={1.5} />
-        </div>
-        <div>
-          <h2 className="text-base font-semibold text-gray-900 mb-1">Модули тренинга</h2>
-          <p className="text-sm text-gray-400 max-w-xs">
-            Здесь будут модули и задания для прохождения курса сотрудниками.
-            Функциональность в разработке.
-          </p>
-        </div>
-      </div>
-    </div>
+    <TabEmptyState
+      iconBg="bg-lime/10"
+      icon={<BookOpen size={22} className="text-lime" strokeWidth={1.5} />}
+      title="Модули тренинга"
+      description="Здесь будут модули и задания для прохождения курса. Функциональность в разработке."
+    />
   );
 }
-
-// ─── Tab: Employees ───────────────────────────────────────────────────────────
 
 function EmployeesTab({ count }: { count: number }) {
   return (
-    <div className="rounded-2xl border border-gray-100 bg-white p-8 shadow-sm">
-      <div className="flex flex-col items-center gap-4 py-8 text-center">
-        <div className="w-14 h-14 rounded-2xl bg-blue-50 flex items-center justify-center">
-          <Users size={24} className="text-blue-400" strokeWidth={1.5} />
-        </div>
-        <div>
-          <h2 className="text-base font-semibold text-gray-900 mb-1">
-            {count > 0 ? `${count} сотрудников` : 'Нет сотрудников'}
-          </h2>
-          <p className="text-sm text-gray-400 max-w-xs">
-            Сотрудники присоединяются по коду приглашения. Список и прогресс
-            появятся здесь.
-          </p>
-        </div>
-      </div>
-    </div>
+    <TabEmptyState
+      iconBg="bg-blue-50"
+      icon={<Users size={22} className="text-blue-400" strokeWidth={1.5} />}
+      title={count > 0 ? `${count} сотрудников` : 'Нет сотрудников'}
+      description="Сотрудники присоединяются по коду приглашения. Список и прогресс появятся здесь."
+    />
   );
 }
 
-// ─── Tab: Analytics ───────────────────────────────────────────────────────────
-
 function AnalyticsTab() {
   return (
-    <div className="rounded-2xl border border-gray-100 bg-white p-8 shadow-sm">
-      <div className="flex flex-col items-center gap-4 py-8 text-center">
-        <div className="w-14 h-14 rounded-2xl bg-purple-50 flex items-center justify-center">
-          <BarChart2 size={24} className="text-purple-400" strokeWidth={1.5} />
-        </div>
-        <div>
-          <h2 className="text-base font-semibold text-gray-900 mb-1">Аналитика</h2>
-          <p className="text-sm text-gray-400 max-w-xs">
-            Статистика прохождения, результаты тестов и вовлечённость сотрудников
-            появятся здесь.
-          </p>
-        </div>
-      </div>
-    </div>
+    <TabEmptyState
+      iconBg="bg-purple-50"
+      icon={<BarChart2 size={22} className="text-purple-400" strokeWidth={1.5} />}
+      title="Аналитика"
+      description="Статистика прохождения, результаты тестов и вовлечённость сотрудников появятся здесь."
+    />
   );
 }
 
@@ -306,14 +314,9 @@ function MaterialsTab({
     setDownloading(file.fileId);
     setDownloadError(null);
     try {
-      const res = await apiFetch(
-        `/api/courses/${courseId}/files/${file.fileId}/download`
-      );
+      const res = await apiFetch(`/api/courses/${courseId}/files/${file.fileId}/download`);
       const data = await res.json();
-      if (!res.ok || !data.ok) {
-        throw new Error(data.detail ?? 'Не удалось получить ссылку');
-      }
-      // Trigger browser download
+      if (!res.ok || !data.ok) throw new Error(data.detail ?? 'Не удалось получить ссылку');
       const a = document.createElement('a');
       a.href = data.url;
       a.download = data.fileName ?? file.name;
@@ -330,27 +333,27 @@ function MaterialsTab({
 
   if (files.length === 0) {
     return (
-      <div className="rounded-2xl border border-gray-100 bg-white p-8 shadow-sm">
-        <div className="flex flex-col items-center gap-3 py-8 text-center">
-          <Files size={32} className="text-gray-300" strokeWidth={1.5} />
-          <p className="text-sm text-gray-400">Нет загруженных материалов</p>
-        </div>
-      </div>
+      <TabEmptyState
+        iconBg="bg-gray-100"
+        icon={<Files size={22} className="text-gray-400" strokeWidth={1.5} />}
+        title="Нет материалов"
+        description="Загруженные файлы курса появятся здесь."
+      />
     );
   }
 
   return (
-    <div className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+    <div className="rounded-2xl border border-neutral-200/80 bg-white shadow-sm overflow-hidden">
       {downloadError && (
-        <div className="flex items-center gap-2 px-5 py-3 bg-red-50 border-b border-red-100 text-sm text-red-600">
-          <AlertCircle size={14} />
+        <div className="flex items-center gap-2 px-5 py-3 bg-red-50 border-b border-red-100 text-[13px] text-red-600">
+          <AlertCircle size={13} />
           {downloadError}
         </div>
       )}
 
-      <div className="px-5 py-4 border-b border-gray-50">
-        <h2 className="text-sm font-semibold text-gray-700">
-          Файлы курса ({files.length})
+      <div className="px-5 py-3.5 border-b border-gray-50">
+        <h2 className="text-[13px] font-semibold text-gray-700">
+          Файлы курса <span className="text-gray-400 font-normal">({files.length})</span>
         </h2>
       </div>
 
@@ -358,28 +361,26 @@ function MaterialsTab({
         {files.map((file) => (
           <li
             key={file.fileId ?? file.name}
-            className="flex items-center gap-3 px-5 py-3.5 hover:bg-gray-50/50 transition-colors"
+            className="flex items-center gap-3 px-5 py-3 hover:bg-gray-50/60 transition-colors"
           >
             {fileIcon(file.name)}
 
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-800 truncate">{file.name}</p>
+              <p className="text-[13px] font-medium text-gray-800 truncate">{file.name}</p>
               <div className="flex items-center gap-3 mt-0.5">
-                <span className="text-xs text-gray-400">{formatBytes(file.size)}</span>
+                <span className="text-[11px] text-gray-400">{formatBytes(file.size)}</span>
                 {file.parseStatus === 'parsed' && (
-                  <span className="flex items-center gap-1 text-xs text-emerald-600">
-                    <CheckCircle2 size={10} />
-                    Распознан
+                  <span className="flex items-center gap-1 text-[11px] text-emerald-600">
+                    <CheckCircle2 size={10} />Распознан
                   </span>
                 )}
                 {file.parseStatus === 'error' && (
-                  <span className="flex items-center gap-1 text-xs text-red-500">
-                    <AlertCircle size={10} />
-                    Ошибка парсинга
+                  <span className="flex items-center gap-1 text-[11px] text-red-500">
+                    <AlertCircle size={10} />Ошибка парсинга
                   </span>
                 )}
                 {file.parseStatus === 'skipped' && (
-                  <span className="text-xs text-gray-400">Пропущен</span>
+                  <span className="text-[11px] text-gray-400">Пропущен</span>
                 )}
               </div>
             </div>
@@ -388,17 +389,16 @@ function MaterialsTab({
               onClick={() => handleDownload(file)}
               disabled={downloading === file.fileId || !file.fileId}
               className={cn(
-                'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors shrink-0',
+                'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-medium transition-colors shrink-0',
                 downloading === file.fileId
                   ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                  : 'bg-gray-50 text-gray-600 border border-gray-100 hover:bg-lime/10 hover:border-lime/30 hover:text-[#0F0F14]'
+                  : 'bg-gray-50 text-gray-600 border border-gray-200 hover:bg-lime/10 hover:border-lime/30 hover:text-[#0B0B0F]'
               )}
             >
-              {downloading === file.fileId ? (
-                <Loader2 size={12} className="animate-spin" />
-              ) : (
-                <Download size={12} />
-              )}
+              {downloading === file.fileId
+                ? <Loader2 size={12} className="animate-spin" />
+                : <Download size={12} />
+              }
               Скачать
             </button>
           </li>
