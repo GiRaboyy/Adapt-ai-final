@@ -2,13 +2,14 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   BookOpen,
   BarChart2,
   User,
   ChevronLeft,
   ChevronRight,
+  Plus,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -26,6 +27,7 @@ const NAV_ITEMS: NavItem[] = [
 export function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const pathname = usePathname();
+  const router = useRouter();
 
   return (
     <aside
@@ -44,6 +46,24 @@ export function Sidebar() {
             ADAPT
           </span>
         )}
+      </div>
+
+      <div className="mx-4 h-px bg-white/[0.06] mb-3" />
+
+      {/* Create Course button */}
+      <div className="px-2 mb-2">
+        <Tooltip label="Создать курс" disabled={!collapsed}>
+          <button
+            onClick={() => router.push('/curator/courses?new=1')}
+            className={cn(
+              'flex items-center gap-2.5 w-full rounded-xl bg-lime text-[#0F0F14] font-semibold text-sm hover:brightness-95 transition-all shadow-sm',
+              collapsed ? 'justify-center px-0 py-2.5' : 'px-3 py-2.5'
+            )}
+          >
+            <Plus size={16} className="shrink-0" />
+            {!collapsed && <span className="whitespace-nowrap">Создать курс</span>}
+          </button>
+        </Tooltip>
       </div>
 
       <div className="mx-4 h-px bg-white/[0.06] mb-2" />

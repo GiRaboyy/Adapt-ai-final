@@ -689,7 +689,8 @@ class CourseProcessRequest(BaseModel):
 
 
 class CourseManifestFile(BaseModel):
-    name: str
+    fileId: str           # UUID filename in storage e.g. "abc123.pdf"
+    name: str             # original file name
     type: str
     size: int
     storagePath: str
@@ -705,6 +706,8 @@ class CourseManifest(BaseModel):
     createdAt: str
     overallStatus: str  # "ready" | "partial" | "error" | "processing"
     textBytes: int
+    inviteCode: str
+    employeesCount: int = 0
     files: List[CourseManifestFile]
 
 
@@ -720,12 +723,18 @@ async def process_course(
     Downloads each file, parses it, saves parsed text and manifest.json.
     """
     import json
+    import random
+    import string
     from datetime import datetime, timezone
     from api._lib.supabase_admin import get_admin_client
 
     log = get_logger(__name__)
     user_id = user["id"]
     course_id = body.courseId
+
+    def _generate_invite_code(length: int = 6) -> str:
+        chars = string.ascii_uppercase + string.digits
+        return "".join(random.choices(chars, k=length))
 
     log.info(f"POST /api/courses/process - userId={user_id}, courseId={course_id}")
 
@@ -753,6 +762,7 @@ async def process_course(
         except Exception as e:
             log.error(f"Failed to download {file_path}: {e}")
             parsed_files.append(CourseManifestFile(
+                fileId=file_info.name,
                 name=file_info.originalName,
                 type=file_info.mimeType,
                 size=file_info.size,
@@ -805,6 +815,7 @@ async def process_course(
                 parse_error = f"Parsed text save failed: {str(e)}"
 
         parsed_files.append(CourseManifestFile(
+            fileId=file_info.name,
             name=file_info.originalName,
             type=file_info.mimeType,
             size=file_info.size,
@@ -844,6 +855,8 @@ async def process_course(
         createdAt=datetime.now(timezone.utc).isoformat(),
         overallStatus=overall_status,
         textBytes=total_text_bytes,
+        inviteCode=_generate_invite_code(),
+        employeesCount=0,
         files=[f.model_dump() for f in parsed_files],
     )
 
@@ -919,6 +932,8 @@ async def list_courses(user: dict = Depends(get_current_user)):
                 "createdAt": "",
                 "overallStatus": "error",
                 "textBytes": 0,
+                "inviteCode": "",
+                "employeesCount": 0,
                 "files": [],
             })
             continue
@@ -927,3 +942,82 @@ async def list_courses(user: dict = Depends(get_current_user)):
     courses.sort(key=lambda c: c.get("createdAt", ""), reverse=True)
 
     return {"ok": True, "courses": courses}
+
+
+@app.get("/api/courses/{course_id}")
+async def get_course(course_id: str, user: dict = Depends(get_current_user)):
+    """
+    Get a single course manifest by courseId.
+    """
+    import json
+    from api._lib.supabase_admin import get_admin_client
+
+    log = get_logger(__name__)
+    user_id = user["id"]
+
+    supabase = get_admin_client()
+    manifest_path = f"{user_id}/{course_id}/manifest.json"
+    try:
+        manifest_bytes = supabase.storage.from_(COURSES_BUCKET).download(manifest_path)
+        manifest = json.loads(manifest_bytes.decode("utf-8"))
+    except Exception as e:
+        log.error(f"Could not read manifest for course {course_id}: {e}")
+        raise HTTPException(status_code=404, detail="Course not found")
+
+    return {"ok": True, "manifest": manifest}
+
+
+@app.get("/api/courses/{course_id}/files/{file_id}/download")
+async def download_course_file(
+    course_id: str,
+    file_id: str,
+    user: dict = Depends(get_current_user),
+):
+    """
+    Return a short-lived signed URL to download a course file.
+    file_id is the UUID filename stored in Storage (e.g. "abc123.pdf").
+    """
+    import json
+    from fastapi.responses import JSONResponse
+    from api._lib.supabase_admin import get_admin_client
+
+    log = get_logger(__name__)
+    user_id = user["id"]
+
+    supabase = get_admin_client()
+
+    # Read manifest to verify the file belongs to this user's course
+    manifest_path = f"{user_id}/{course_id}/manifest.json"
+    try:
+        manifest_bytes = supabase.storage.from_(COURSES_BUCKET).download(manifest_path)
+        manifest = json.loads(manifest_bytes.decode("utf-8"))
+    except Exception:
+        raise HTTPException(status_code=404, detail="Course not found")
+
+    # Find matching file entry by fileId
+    file_entry = next(
+        (f for f in manifest.get("files", []) if f.get("fileId") == file_id),
+        None,
+    )
+    if not file_entry:
+        raise HTTPException(status_code=404, detail="File not found in course")
+
+    storage_path = file_entry["storagePath"]
+
+    # Create a signed URL valid for 60 seconds
+    try:
+        result = supabase.storage.from_(COURSES_BUCKET).create_signed_url(
+            storage_path, expires_in=60
+        )
+        signed_url = result.get("signedURL") or result.get("signedUrl")
+        if not signed_url:
+            raise ValueError(f"No signed URL in response: {result}")
+    except Exception as e:
+        log.error(f"Failed to create signed URL for {storage_path}: {e}")
+        raise HTTPException(status_code=500, detail=f"Could not generate download URL: {str(e)}")
+
+    return {
+        "ok": True,
+        "url": signed_url,
+        "fileName": file_entry.get("name", file_id),
+    }

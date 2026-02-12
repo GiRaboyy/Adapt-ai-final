@@ -13,12 +13,13 @@ export type FileParseStatus = 'parsed' | 'skipped' | 'error';
 export type CourseOverallStatus = 'processing' | 'ready' | 'partial' | 'error';
 
 export interface CourseManifestFile {
+  fileId: string;        // UUID filename in storage e.g. "abc.pdf"
   name: string;          // original file name
   type: string;          // MIME type
   size: number;          // bytes
-  storagePath: string;   // path in bucket: {userId}/{courseId}/files/{name}
+  storagePath: string;   // path in bucket: {userId}/{courseId}/files/{fileId}
   parseStatus: FileParseStatus;
-  parsedPath?: string;   // path in bucket: {userId}/{courseId}/parsed/{name}.txt
+  parsedPath?: string;   // path in bucket: {userId}/{courseId}/parsed/{fileId}.txt
   parseError?: string;
 }
 
@@ -29,6 +30,8 @@ export interface CourseManifest {
   createdAt: string;          // ISO 8601
   overallStatus: CourseOverallStatus;
   textBytes: number;
+  inviteCode: string;         // short 6-char alphanumeric code
+  employeesCount: number;     // enrolled employees
   files: CourseManifestFile[];
 }
 

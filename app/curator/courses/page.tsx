@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, Suspense } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { Plus, BookOpen } from 'lucide-react';
 import { CourseCard } from '@/components/curator/CourseCard';
 import { CreateCourseDialog } from '@/components/curator/CreateCourseDialog';
@@ -10,11 +11,22 @@ import { apiFetch } from '@/lib/api';
 import { Skeleton } from '@/components/ui/skeleton';
 
 export default function CoursesPage() {
+  return (
+    <Suspense>
+      <CoursesPageInner />
+    </Suspense>
+  );
+}
+
+function CoursesPageInner() {
   const [userId, setUserId] = useState<string | null>(null);
   const [courses, setCourses] = useState<CourseManifest[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [fetchError, setFetchError] = useState('');
+
+  const searchParams = useSearchParams();
+  const router = useRouter();
 
   // Get current user
   useEffect(() => {
@@ -23,6 +35,15 @@ export default function CoursesPage() {
       setUserId(data.user?.id ?? null);
     });
   }, []);
+
+  // Auto-open dialog when ?new=1 is in URL
+  useEffect(() => {
+    if (searchParams.get('new') === '1') {
+      setDialogOpen(true);
+      // Remove the param without full reload
+      router.replace('/curator/courses');
+    }
+  }, [searchParams, router]);
 
   const loadCourses = useCallback(async () => {
     if (!userId) return;
@@ -75,16 +96,14 @@ export default function CoursesPage() {
       <div className="px-8 py-8">
         {/* Page header */}
         <div className="flex items-center justify-between mb-8">
-          <h1 className="text-2xl font-bold text-gray-900">Курсы</h1>
-          {courses.length > 0 && (
-            <button
-              onClick={() => setDialogOpen(true)}
-              className="flex items-center gap-2 rounded-xl bg-lime px-4 py-2.5 text-sm font-semibold text-[#0F0F14] hover:brightness-95 transition shadow-sm"
-            >
-              <Plus size={15} />
-              Создать курс
-            </button>
-          )}
+          <h1 className="text-2xl font-bold text-gray-900">Мои курсы</h1>
+          <button
+            onClick={() => setDialogOpen(true)}
+            className="flex items-center gap-2 rounded-xl bg-lime px-4 py-2.5 text-sm font-semibold text-[#0F0F14] hover:brightness-95 transition shadow-sm"
+          >
+            <Plus size={15} />
+            Создать курс
+          </button>
         </div>
 
         {fetchError && (

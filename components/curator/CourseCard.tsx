@@ -1,6 +1,10 @@
+'use client';
+
 import { CourseManifest, CourseOverallStatus } from '@/lib/types';
-import { FileText, Calendar, Files, ExternalLink } from 'lucide-react';
+import { Calendar, Files, Users, Copy, ArrowRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useRouter } from 'next/navigation';
+import { useState } from 'react';
 
 interface CourseCardProps {
   course: CourseManifest;
@@ -34,13 +38,6 @@ const SIZE_LABELS: Record<string, string> = {
   large: 'Большой',
 };
 
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 Б';
-  if (bytes < 1024) return `${bytes} Б`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} КБ`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} МБ`;
-}
-
 function formatDate(iso: string): string {
   if (!iso) return '—';
   try {
@@ -55,14 +52,32 @@ function formatDate(iso: string): string {
 }
 
 export function CourseCard({ course }: CourseCardProps) {
-  const status =
-    STATUS_CONFIG[course.overallStatus] ?? STATUS_CONFIG.error;
+  const router = useRouter();
+  const [copied, setCopied] = useState(false);
+
+  const status = STATUS_CONFIG[course.overallStatus] ?? STATUS_CONFIG.error;
   const sizeLabel = SIZE_LABELS[course.size] ?? course.size;
   const fileCount = course.files.length;
 
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!course.inviteCode) return;
+    navigator.clipboard.writeText(course.inviteCode).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    });
+  };
+
+  const openCourse = () => {
+    router.push(`/curator/courses/${course.courseId}`);
+  };
+
   return (
-    <div className="group relative flex flex-col bg-white rounded-2xl border border-gray-100 p-6 shadow-sm hover:shadow-md hover:border-gray-200 transition-all duration-200">
-      {/* Status badge */}
+    <div
+      className="group relative flex flex-col bg-white rounded-2xl border border-gray-100 p-6 shadow-sm hover:shadow-md hover:border-gray-200 transition-all duration-200 cursor-pointer"
+      onClick={openCourse}
+    >
+      {/* Top row: status + size */}
       <div className="flex items-start justify-between gap-3 mb-4">
         <span
           className={cn(
@@ -86,15 +101,18 @@ export function CourseCard({ course }: CourseCardProps) {
       <div className="flex flex-col gap-2 mt-auto">
         <div className="flex items-center gap-2 text-xs text-gray-500">
           <Files size={13} className="shrink-0 text-gray-400" />
-          <span>{fileCount} {fileCount === 1 ? 'файл' : fileCount < 5 ? 'файла' : 'файлов'}</span>
+          <span>
+            {fileCount}{' '}
+            {fileCount === 1 ? 'файл' : fileCount < 5 ? 'файла' : 'файлов'}
+          </span>
         </div>
 
-        {course.textBytes > 0 && (
-          <div className="flex items-center gap-2 text-xs text-gray-500">
-            <FileText size={13} className="shrink-0 text-gray-400" />
-            <span>{formatBytes(course.textBytes)} текста</span>
-          </div>
-        )}
+        <div className="flex items-center gap-2 text-xs text-gray-500">
+          <Users size={13} className="shrink-0 text-gray-400" />
+          <span>
+            {course.employeesCount ?? 0} сотрудников
+          </span>
+        </div>
 
         <div className="flex items-center gap-2 text-xs text-gray-500">
           <Calendar size={13} className="shrink-0 text-gray-400" />
@@ -102,16 +120,27 @@ export function CourseCard({ course }: CourseCardProps) {
         </div>
       </div>
 
-      {/* Open button */}
-      <button
-        className="mt-5 flex items-center justify-center gap-2 w-full rounded-xl border border-gray-100 bg-gray-50 py-2 text-sm font-medium text-gray-700 hover:bg-lime hover:text-[#0F0F14] hover:border-lime transition-colors duration-150"
-        onClick={() => {
-          /* TODO: navigate to course detail */
-        }}
-      >
-        Открыть
-        <ExternalLink size={13} />
-      </button>
+      {/* Invite code + open */}
+      <div className="mt-5 flex items-center gap-2">
+        {/* Invite code chip */}
+        <button
+          onClick={handleCopy}
+          className="flex items-center gap-1.5 rounded-lg border border-gray-100 bg-gray-50 px-3 py-1.5 text-xs font-mono text-gray-600 hover:bg-lime/10 hover:border-lime/30 hover:text-[#0F0F14] transition-colors"
+          title="Скопировать код курса"
+        >
+          <Copy size={11} />
+          {copied ? 'Скопировано!' : (course.inviteCode ?? '——')}
+        </button>
+
+        {/* Open button */}
+        <button
+          onClick={openCourse}
+          className="ml-auto flex items-center gap-1.5 rounded-xl bg-lime px-3 py-1.5 text-xs font-semibold text-[#0F0F14] hover:brightness-95 transition-colors"
+        >
+          Открыть
+          <ArrowRight size={12} />
+        </button>
+      </div>
     </div>
   );
 }
