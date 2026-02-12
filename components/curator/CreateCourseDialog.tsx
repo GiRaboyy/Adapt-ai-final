@@ -76,6 +76,18 @@ function getFileExt(name: string): string {
 }
 
 /**
+ * Convert a Supabase Storage error into a human-readable message.
+ * RLS 403 errors are common when bucket policies are missing.
+ */
+function friendlyUploadError(err: { statusCode?: string | number; message?: string }): string {
+  const msg = err.message ?? '';
+  if (msg.includes('row-level security') || msg.includes('RLS') || String(err.statusCode) === '403') {
+    return 'Нет прав на загрузку. Проверь политики Storage для bucket «courses» в Supabase Dashboard.';
+  }
+  return `[${err.statusCode ?? 'ERR'}] ${msg}`;
+}
+
+/**
  * Build a safe Supabase Storage key for a file.
  * Uses a fresh UUID so the path never contains spaces, Cyrillic, or other
  * characters that Supabase rejects after URL-decoding.
@@ -249,7 +261,7 @@ export function CreateCourseDialog({
             contentType,
             error,
           });
-          throw new Error(`[${error.statusCode ?? 'ERR'}] ${error.message}`);
+          throw new Error(friendlyUploadError(error));
         }
 
         setFiles((prev) =>
