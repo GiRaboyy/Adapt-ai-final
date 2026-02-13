@@ -23,7 +23,8 @@ class Settings(BaseSettings):
     # Yandex AI Studio
     yandex_api_key: str = ""
     yandex_folder_id: str = ""
-    yandex_prompt_id: str = ""     # optional Yandex AI Studio prompt/agent ID
+    yandex_project_id: str = ""    # Yandex Cloud project/folder billing ID
+    yandex_prompt_id: str = ""     # Yandex AI Studio prompt template ID
     yandex_model_uri: str = ""     # optional override, e.g. "yandexgpt-lite/latest"
 
     # Vercel deployment metadata
@@ -45,6 +46,7 @@ settings = Settings(
     vercel_url=os.getenv("VERCEL_URL", ""),
     yandex_api_key=os.getenv("YANDEX_API_KEY", ""),
     yandex_folder_id=os.getenv("YANDEX_FOLDER_ID", ""),
+    yandex_project_id=os.getenv("YANDEX_PROJECT_ID", ""),
     yandex_prompt_id=os.getenv("YANDEX_PROMPT_ID", ""),
     yandex_model_uri=os.getenv("YANDEX_MODEL_URI", ""),
 )

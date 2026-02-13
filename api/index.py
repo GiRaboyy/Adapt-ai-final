@@ -1257,66 +1257,54 @@ async def generate_training(
         f"draftCourseId={body.draftCourseId} size={body.size}"
     )
 
-    if not settings.yandex_api_key or not settings.yandex_folder_id:
+    if not settings.yandex_api_key or not settings.yandex_prompt_id:
         raise HTTPException(
             status_code=503,
-            detail="Yandex AI Studio не настроен: задайте YANDEX_API_KEY и YANDEX_FOLDER_ID в env",
+            detail="Yandex AI Studio не настроен: задайте YANDEX_API_KEY и YANDEX_PROMPT_ID в env",
         )
 
     # Determine question count by size
     size_map = {"small": (8, 12), "medium": (12, 18), "large": (18, 30)}
     n_min, n_max = size_map.get(body.size, (12, 18))
+    quota_mcq = round((n_min + n_max) / 2 * 0.7)
+    quota_open = round((n_min + n_max) / 2 * 0.3)
 
-    # Build model identifier
-    if settings.yandex_model_uri:
-        model = f"gpt://{settings.yandex_folder_id}/{settings.yandex_model_uri}"
-    else:
-        model = f"gpt://{settings.yandex_folder_id}/yandexgpt"
+    prompt_variables = {
+        "course_title": body.title,
+        "course_description": body.title,
+        "kb_chunks": body.extractedText[:80_000],
+        "quota_mcq": str(quota_mcq),
+        "quota_open": str(quota_open),
+        "quota_roleplay": "0",
+        "expected_steps": str(quota_mcq + quota_open),
+        "batch_index": "0",
+        "total_batches": "1",
+    }
 
-    system_prompt = f"""Ты — методолог корпоративного обучения.
-Тебе дан текст учебного материала и метаданные курса.
-Сгенерируй от {n_min} до {n_max} вопросов для тренинга (70% quiz, 30% open).
-
-СТРОГО верни ТОЛЬКО валидный JSON-массив без markdown-блоков, без пояснений, без текста до/после.
-Формат каждого элемента:
-- quiz: {{"id":"<uuid>","type":"quiz","prompt":"<вопрос>","quizOptions":["<вар1>","<вар2>","<вар3>","<вар4>"],"correctIndex":<0-3>}}
-- open: {{"id":"<uuid>","type":"open","prompt":"<вопрос>","expectedAnswer":"<образец ответа 2-4 предложения>"}}
-
-Требования:
-- Quiz: ровно 4 варианта, один правильный. Варианты похожи, ответ не должен быть очевидным.
-- Open: ожидаемый ответ — содержательный, 2-4 предложения.
-- Все вопросы строго по теме материала.
-- id для каждого вопроса — уникальный UUID v4."""
-
-    user_message = f"""Курс: «{body.title}»
-Размер: {body.size}
-
-=== Материал ===
-{body.extractedText[:80_000]}"""
-
-    def _call_yandex(msgs: list) -> str:
+    def _call_yandex(variables: dict) -> str:
         from openai import OpenAI
-        client = OpenAI(
-            api_key=settings.yandex_api_key,
-            base_url="https://rest-assistant.api.cloud.yandex.net/v1",
+        client_kwargs = {
+            "api_key": settings.yandex_api_key,
+            "base_url": "https://rest-assistant.api.cloud.yandex.net/v1",
+        }
+        if settings.yandex_project_id:
+            client_kwargs["project"] = settings.yandex_project_id
+        client = OpenAI(**client_kwargs)
+        response = client.responses.create(
+            prompt={
+                "id": settings.yandex_prompt_id,
+                "variables": variables,
+            },
+            input="Сгенерируй вопросы по учебному материалу",
         )
-        response = client.chat.completions.create(
-            model=model,
-            messages=msgs,
-            temperature=0.4,
-            max_tokens=8000,
-        )
-        return response.choices[0].message.content or ""
+        return response.output_text or ""
 
     t_start = time.monotonic()
 
     # First attempt
     raw = ""
     try:
-        raw = _call_yandex([
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_message},
-        ])
+        raw = _call_yandex(prompt_variables)
     except Exception as e:
         log.error(f"[{request_id}] Yandex call failed: {e}")
         raise HTTPException(status_code=502, detail=f"Yandex AI Studio error: {str(e)}")
@@ -1349,23 +1337,14 @@ async def generate_training(
 
     parsed = _extract_json(raw)
 
-    # Repair pass if first attempt failed
+    # Retry once if JSON parse failed
     if parsed is None:
-        log.warning(f"[{request_id}] JSON parse failed, attempting repair pass")
-        repair_prompt = f"""Твой предыдущий ответ содержит невалидный JSON.
-Исправь и верни ТОЛЬКО чистый JSON-массив вопросов без пояснений:
-
-{raw[:3000]}"""
+        log.warning(f"[{request_id}] JSON parse failed, retrying")
         try:
-            raw2 = _call_yandex([
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_message},
-                {"role": "assistant", "content": raw},
-                {"role": "user", "content": repair_prompt},
-            ])
-            parsed = _extract_json(raw2)
+            raw = _call_yandex(prompt_variables)
+            parsed = _extract_json(raw)
         except Exception as e:
-            log.error(f"[{request_id}] Repair pass failed: {e}")
+            log.error(f"[{request_id}] Retry failed: {e}")
 
     if parsed is None or not isinstance(parsed, list):
         log.error(f"[{request_id}] Could not parse Yandex response as JSON array. raw={raw[:500]}")
@@ -1541,14 +1520,10 @@ async def get_course_by_code(code: str):
 @app.get("/api/yandex/health")
 async def yandex_health():
     """Check if Yandex AI Studio credentials are configured (does not call the model)."""
-    folder_id = settings.yandex_folder_id
-    model = f"gpt://{folder_id}/yandexgpt" if folder_id else "(not set)"
-    if settings.yandex_model_uri and folder_id:
-        model = f"gpt://{folder_id}/{settings.yandex_model_uri}"
     return {
         "ok": True,
         "api_key_set": bool(settings.yandex_api_key),
-        "folder_id_set": bool(settings.yandex_folder_id),
         "prompt_id": settings.yandex_prompt_id or None,
-        "model": model,
+        "project_id": settings.yandex_project_id or None,
+        "ready": bool(settings.yandex_api_key and settings.yandex_prompt_id),
     }
