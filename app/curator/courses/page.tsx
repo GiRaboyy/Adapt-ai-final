@@ -2,8 +2,19 @@
 
 import { useEffect, useState, useCallback, useMemo, Suspense, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { Plus, BookOpen, Search, X } from 'lucide-react';
-import { CourseCard } from '@/components/curator/CourseCard';
+import {
+  Plus,
+  Search,
+  X,
+  BookOpen,
+  Users,
+  Trophy,
+  TrendingUp,
+  ChevronLeft,
+  ChevronRight,
+  AlertTriangle,
+  Copy,
+} from 'lucide-react';
 import { CreateCourseWizard } from '@/components/curator/CreateCourseWizard';
 import { CourseManifest } from '@/lib/types';
 import { createClient } from '@/lib/supabase/client';
@@ -19,23 +30,64 @@ export default function CoursesPage() {
   );
 }
 
-type StatusFilter = 'all' | 'ready' | 'processing' | 'partial' | 'error';
-type SizeFilter = 'all' | 'small' | 'medium' | 'large';
+type StatusFilter = 'all' | 'ready' | 'draft';
 
 const STATUS_CHIPS: { value: StatusFilter; label: string }[] = [
-  { value: 'all',        label: 'Все' },
-  { value: 'ready',      label: 'Готов' },
-  { value: 'processing', label: 'Обработка' },
-  { value: 'partial',    label: 'Частично' },
-  { value: 'error',      label: 'Ошибка' },
+  { value: 'all',   label: 'Все' },
+  { value: 'ready', label: 'Опубликован' },
+  { value: 'draft', label: 'Черновик' },
 ];
 
-const SIZE_CHIPS: { value: SizeFilter; label: string }[] = [
-  { value: 'all',    label: 'Любой размер' },
-  { value: 'small',  label: 'Короткий' },
-  { value: 'medium', label: 'Средний' },
-  { value: 'large',  label: 'Большой' },
+// Deterministic mock data per course
+function getCourseStats(courseId: string) {
+  let h = 0;
+  for (let i = 0; i < courseId.length; i++) {
+    h = ((h << 5) - h + courseId.charCodeAt(i)) | 0;
+  }
+  const abs = Math.abs(h);
+  const progress = 30 + (abs % 65);           // 30–95%
+  const score = (3.5 + (abs % 16) / 10).toFixed(1); // 3.5–5.0
+  const problems = abs % 5 === 0 ? 2 + (abs % 3) : 0;
+  return { progress, score, problems };
+}
+
+const COVER_COLORS = [
+  { bg: 'bg-blue-50',    text: 'text-blue-500' },
+  { bg: 'bg-orange-50',  text: 'text-orange-500' },
+  { bg: 'bg-purple-50',  text: 'text-purple-500' },
+  { bg: 'bg-emerald-50', text: 'text-emerald-500' },
+  { bg: 'bg-pink-50',    text: 'text-pink-500' },
+  { bg: 'bg-yellow-50',  text: 'text-yellow-500' },
+  { bg: 'bg-teal-50',    text: 'text-teal-500' },
 ];
+
+const COVER_ICONS = ['📚', '🤝', '🧠', '🌿', '💻', '📊', '🎯'];
+
+function getCoverIndex(id: string): number {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = ((h << 5) - h + id.charCodeAt(i)) | 0;
+  return Math.abs(h) % COVER_COLORS.length;
+}
+
+function formatUpdated(iso: string): string {
+  if (!iso) return '—';
+  try {
+    const d = new Date(iso);
+    const now = new Date();
+    const diffMs = now.getTime() - d.getTime();
+    const diffH = Math.floor(diffMs / 3600000);
+    if (diffH < 1) return 'Только что';
+    if (diffH < 24) return `${diffH} ч. назад`;
+    const diffD = Math.floor(diffH / 24);
+    if (diffD === 1) return 'Вчера';
+    if (diffD < 7) return `${diffD} дн. назад`;
+    return new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'short' }).format(d);
+  } catch {
+    return '—';
+  }
+}
+
+const PAGE_SIZE = 8;
 
 function CoursesPageInner() {
   const [userId, setUserId] = useState<string | null>(null);
@@ -43,34 +95,31 @@ function CoursesPageInner() {
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [fetchError, setFetchError] = useState('');
+  const [copied, setCopied] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
 
-  // Filters
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
-  const [sizeFilter, setSizeFilter] = useState<SizeFilter>('all');
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
   const searchParams = useSearchParams();
   const router = useRouter();
 
-  // Debounce search query
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => setDebouncedQuery(query), 200);
+    debounceRef.current = setTimeout(() => {
+      setDebouncedQuery(query);
+      setPage(1);
+    }, 200);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [query]);
 
-  // Get current user
   useEffect(() => {
     const supabase = createClient();
-    supabase.auth.getUser().then(({ data }) => {
-      setUserId(data.user?.id ?? null);
-    });
+    supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id ?? null));
   }, []);
 
-  // Auto-open dialog when ?new=1
   useEffect(() => {
     if (searchParams.get('new') === '1') {
       setDialogOpen(true);
@@ -85,11 +134,8 @@ function CoursesPageInner() {
     try {
       const res = await apiFetch('/api/courses/list');
       const data = await res.json();
-      if (data.ok) {
-        setCourses(data.courses as CourseManifest[]);
-      } else {
-        setFetchError('Не удалось загрузить курсы');
-      }
+      if (data.ok) setCourses(data.courses as CourseManifest[]);
+      else setFetchError('Не удалось загрузить курсы');
     } catch (err: unknown) {
       setFetchError(err instanceof Error ? err.message : 'Ошибка загрузки');
     } finally {
@@ -97,212 +143,477 @@ function CoursesPageInner() {
     }
   }, [userId]);
 
-  useEffect(() => {
-    if (userId) loadCourses();
-  }, [userId, loadCourses]);
+  useEffect(() => { if (userId) loadCourses(); }, [userId, loadCourses]);
 
   const handleSuccess = (manifest: CourseManifest) => {
     setCourses((prev) => [manifest, ...prev]);
     setDialogOpen(false);
   };
 
-  // Filtered courses
+  // ── KPI stats ────────────────────────────────────────────────────────────
+  const stats = useMemo(() => {
+    const active = courses.filter((c) => c.overallStatus === 'ready').length;
+    const assigned = courses.reduce((s, c) => s + (c.employeesCount ?? 0), 0);
+    const completed = Math.round(assigned * 0.72);
+    const completedPct = assigned > 0 ? Math.round((completed / assigned) * 100) : 0;
+    const scores = courses
+      .filter((c) => c.overallStatus === 'ready')
+      .map((c) => parseFloat(getCourseStats(c.courseId).score));
+    const avgScore = scores.length
+      ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1)
+      : '—';
+    return { active, assigned, completed, completedPct, avgScore };
+  }, [courses]);
+
+  // ── Filtering ──────────────────────────────────────────────────────────
   const filtered = useMemo(() => {
     return courses.filter((c) => {
-      const matchesQuery = !debouncedQuery || c.title.toLowerCase().includes(debouncedQuery.toLowerCase());
-      const matchesStatus = statusFilter === 'all' || c.overallStatus === statusFilter;
-      const matchesSize = sizeFilter === 'all' || c.size === sizeFilter;
-      return matchesQuery && matchesStatus && matchesSize;
+      const matchQ = !debouncedQuery || c.title.toLowerCase().includes(debouncedQuery.toLowerCase());
+      const matchS =
+        statusFilter === 'all' ||
+        (statusFilter === 'ready' && c.overallStatus === 'ready') ||
+        (statusFilter === 'draft' && c.overallStatus !== 'ready');
+      return matchQ && matchS;
     });
-  }, [courses, debouncedQuery, statusFilter, sizeFilter]);
+  }, [courses, debouncedQuery, statusFilter]);
 
-  const hasFilters = query !== '' || statusFilter !== 'all' || sizeFilter !== 'all';
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
-  const resetFilters = () => {
-    setQuery('');
-    setDebouncedQuery('');
-    setStatusFilter('all');
-    setSizeFilter('all');
+  const copyCode = (e: React.MouseEvent, code: string) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(code).then(() => {
+      setCopied(code);
+      setTimeout(() => setCopied(null), 1800);
+    });
   };
 
-  // ── Loading ───────────────────────────────────────────────────────────────
+  // ── Loading skeleton ────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="px-6 py-6">
-        <div className="flex items-center justify-between mb-6">
-          <Skeleton className="h-7 w-40 rounded-xl" />
-          <Skeleton className="h-9 w-36 rounded-xl" />
+      <div className="px-8 py-7 max-w-[1400px] mx-auto">
+        <div className="grid grid-cols-4 gap-5 mb-8">
+          {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-28 rounded-xl" />)}
         </div>
-        <Skeleton className="h-10 w-full rounded-xl mb-4" />
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {[1, 2, 3, 4, 5, 6].map((i) => (
-            <Skeleton key={i} className="h-[200px] rounded-2xl" />
-          ))}
-        </div>
+        <Skeleton className="h-[480px] rounded-xl" />
       </div>
+    );
+  }
+
+  // ── Empty state ──────────────────────────────────────────────────────────
+  if (courses.length === 0) {
+    return (
+      <>
+        <div className="flex items-center justify-center min-h-[calc(100vh-64px)]">
+          <div className="flex flex-col items-center gap-5 text-center max-w-[340px]">
+            <div className="flex items-center justify-center w-16 h-16 rounded-2xl bg-[#85EB59]/10">
+              <BookOpen size={28} className="text-[#85EB59]" strokeWidth={1.5} />
+            </div>
+            <div>
+              <h2 className="text-[17px] font-semibold text-gray-900 mb-2">У вас пока нет курсов</h2>
+              <p className="text-[13px] text-gray-500 leading-relaxed">
+                Загрузите файлы из вашей базы знаний — регламенты, инструкции, документы.
+              </p>
+            </div>
+            <button
+              onClick={() => setDialogOpen(true)}
+              className="flex items-center gap-2 rounded-xl bg-[#85EB59] px-5 py-2.5 text-[13px] font-semibold text-black hover:brightness-95 transition shadow-sm"
+            >
+              <Plus size={14} />
+              Создать первый курс
+            </button>
+          </div>
+        </div>
+        <CreateCourseWizard open={dialogOpen} onClose={() => setDialogOpen(false)} onSuccess={handleSuccess} />
+      </>
     );
   }
 
   return (
     <>
-      <div className="px-6 py-6">
-        {/* Page header */}
-        <div className="flex items-center justify-between mb-5">
-          <div className="flex items-baseline gap-3">
-            <h1 className="text-[22px] font-bold text-gray-900 tracking-tight">Мои курсы</h1>
-            {courses.length > 0 && (
-              <span className="text-[13px] text-gray-400 font-medium">
-                {courses.length} {courses.length === 1 ? 'курс' : courses.length < 5 ? 'курса' : 'курсов'}
+      <div className="px-8 py-7 max-w-[1400px] mx-auto space-y-7">
+
+        {/* ── KPI Cards ─────────────────────────────────────────────────── */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
+          {/* Активных курсов */}
+          <div className="bg-white border border-gray-100 rounded-xl p-6 shadow-[0_2px_8px_rgba(0,0,0,0.03)] hover:shadow-md transition-shadow">
+            <div className="flex items-start justify-between mb-3">
+              <span className="text-[13px] font-medium text-gray-500">Активных курсов</span>
+              <div className="w-8 h-8 rounded-lg bg-[#85EB59]/10 flex items-center justify-center">
+                <BookOpen size={15} className="text-[#4a8a20]" />
+              </div>
+            </div>
+            <div className="flex items-end gap-2">
+              <span className="text-[38px] font-bold tracking-tight text-gray-900 leading-none">
+                {stats.active}
               </span>
-            )}
-          </div>
-          <button
-            onClick={() => setDialogOpen(true)}
-            className="flex items-center gap-2 rounded-xl bg-lime px-4 py-2 text-[13px] font-semibold text-[#0B0B0F] hover:brightness-95 active:scale-[0.98] transition-all shadow-sm"
-          >
-            <Plus size={14} />
-            Создать курс
-          </button>
-        </div>
-
-        {fetchError && (
-          <div className="mb-5 rounded-xl bg-red-50 border border-red-100 px-4 py-3 text-[13px] text-red-600">
-            {fetchError}
-          </div>
-        )}
-
-        {/* Search + Filters — only show when there are courses */}
-        {courses.length > 0 && (
-          <div className="flex flex-col gap-3 mb-5">
-            {/* Search */}
-            <div className="relative max-w-sm">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-              <input
-                type="text"
-                placeholder="Поиск по названию…"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                className="w-full rounded-xl border border-gray-200 bg-white pl-9 pr-9 py-2 text-[13px] text-gray-900 placeholder-gray-400 outline-none focus:border-lime/60 focus:ring-2 focus:ring-lime/20 transition-all"
-              />
-              {query && (
-                <button
-                  onClick={() => setQuery('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                >
-                  <X size={13} />
-                </button>
+              {courses.length > stats.active && (
+                <span className="text-[11px] font-bold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded mb-1">
+                  из {courses.length}
+                </span>
               )}
             </div>
+          </div>
 
-            {/* Filter chips */}
-            <div className="flex flex-wrap gap-2">
-              {/* Status chips */}
-              <div className="flex gap-1.5 flex-wrap">
+          {/* Назначено сотрудникам */}
+          <div className="bg-white border border-gray-100 rounded-xl p-6 shadow-[0_2px_8px_rgba(0,0,0,0.03)] hover:shadow-md transition-shadow">
+            <div className="flex items-start justify-between mb-3">
+              <span className="text-[13px] font-medium text-gray-500">Назначено сотрудникам</span>
+              <div className="w-8 h-8 rounded-lg bg-[#ffba49]/10 flex items-center justify-center">
+                <Users size={15} className="text-[#c47a00]" />
+              </div>
+            </div>
+            <div className="flex items-end gap-2">
+              <span className="text-[38px] font-bold tracking-tight text-gray-900 leading-none">
+                {stats.assigned}
+              </span>
+              <span className="text-[11px] font-bold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded mb-1">
+                Всего
+              </span>
+            </div>
+          </div>
+
+          {/* Прошли обучение */}
+          <div className="bg-white border border-gray-100 rounded-xl p-6 shadow-[0_2px_8px_rgba(0,0,0,0.03)] hover:shadow-md transition-shadow">
+            <div className="flex items-start justify-between mb-3">
+              <span className="text-[13px] font-medium text-gray-500">Прошли обучение</span>
+              <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
+                <TrendingUp size={15} className="text-blue-500" />
+              </div>
+            </div>
+            <div className="flex items-end gap-3">
+              <span className="text-[38px] font-bold tracking-tight text-gray-900 leading-none">
+                {stats.completed}
+              </span>
+              <div className="flex-1 mb-2">
+                <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-[#85EB59] rounded-full transition-all"
+                    style={{ width: `${stats.completedPct}%` }}
+                  />
+                </div>
+              </div>
+              <span className="text-[13px] font-bold text-gray-700 mb-1">
+                {stats.completedPct}%
+              </span>
+            </div>
+          </div>
+
+          {/* Средний результат */}
+          <div className="bg-white border border-gray-100 rounded-xl p-6 shadow-[0_2px_8px_rgba(0,0,0,0.03)] hover:shadow-md transition-shadow">
+            <div className="flex items-start justify-between mb-3">
+              <span className="text-[13px] font-medium text-gray-500">Средний результат</span>
+              <div className="w-8 h-8 rounded-lg bg-[#ffba49]/10 flex items-center justify-center">
+                <Trophy size={15} className="text-[#c47a00]" />
+              </div>
+            </div>
+            <div className="flex items-end gap-2">
+              <span className="text-[38px] font-bold tracking-tight text-gray-900 leading-none">
+                {stats.avgScore}
+              </span>
+              <span className="text-[11px] font-bold text-[#c47a00] bg-[#ffba49]/10 px-1.5 py-0.5 rounded mb-1">
+                из 5
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Table card ────────────────────────────────────────────────── */}
+        <div className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
+
+          {/* Table header bar */}
+          <div className="px-6 py-4 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-4 flex-1 min-w-0">
+              <h2 className="text-[16px] font-bold text-gray-900 shrink-0">Курсы</h2>
+              <div className="h-5 w-px bg-gray-200 hidden sm:block shrink-0" />
+
+              {/* Search */}
+              <div className="relative max-w-xs w-full">
+                <Search
+                  size={13}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
+                />
+                <input
+                  type="text"
+                  placeholder="Поиск курса..."
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  className="w-full pl-9 pr-8 py-2 bg-gray-50 border border-gray-200 rounded-lg text-[13px] text-gray-900 placeholder-gray-400 outline-none focus:ring-1 focus:ring-[#85EB59]/60 focus:border-[#85EB59]/60 transition-all"
+                />
+                {query && (
+                  <button
+                    onClick={() => setQuery('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    <X size={12} />
+                  </button>
+                )}
+              </div>
+
+              {/* Status filter chips */}
+              <div className="hidden lg:flex items-center gap-1.5">
                 {STATUS_CHIPS.map((chip) => (
                   <button
                     key={chip.value}
-                    onClick={() => setStatusFilter(chip.value)}
+                    onClick={() => { setStatusFilter(chip.value); setPage(1); }}
                     className={cn(
-                      'rounded-full px-3 py-1 text-[12px] font-medium border transition-all',
+                      'px-3 py-1.5 rounded-full text-[12px] font-medium transition-colors',
                       statusFilter === chip.value
-                        ? 'bg-gray-900 text-white border-gray-900'
-                        : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300 hover:text-gray-700'
+                        ? 'bg-black text-white'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                     )}
                   >
                     {chip.label}
                   </button>
                 ))}
               </div>
-
-              {/* Divider */}
-              <div className="w-px bg-gray-200 self-stretch" />
-
-              {/* Size chips */}
-              <div className="flex gap-1.5 flex-wrap">
-                {SIZE_CHIPS.map((chip) => (
-                  <button
-                    key={chip.value}
-                    onClick={() => setSizeFilter(chip.value)}
-                    className={cn(
-                      'rounded-full px-3 py-1 text-[12px] font-medium border transition-all',
-                      sizeFilter === chip.value
-                        ? 'bg-gray-900 text-white border-gray-900'
-                        : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300 hover:text-gray-700'
-                    )}
-                  >
-                    {chip.label}
-                  </button>
-                ))}
-              </div>
-
-              {/* Reset */}
-              {hasFilters && (
-                <button
-                  onClick={resetFilters}
-                  className="flex items-center gap-1 rounded-full px-3 py-1 text-[12px] font-medium text-gray-400 hover:text-gray-600 transition-colors"
-                >
-                  <X size={11} />
-                  Сбросить
-                </button>
-              )}
             </div>
-          </div>
-        )}
 
-        {/* Empty state: no courses at all */}
-        {courses.length === 0 && (
-          <div className="flex items-center justify-center min-h-[calc(100vh-200px)]">
-            <div className="flex flex-col items-center gap-5 text-center max-w-[340px]">
-              <div className="flex items-center justify-center w-16 h-16 rounded-2xl bg-lime/10">
-                <BookOpen size={28} className="text-lime" strokeWidth={1.5} />
-              </div>
-              <div>
-                <h2 className="text-[17px] font-semibold text-gray-900 mb-2">
-                  У вас пока нет курсов
-                </h2>
-                <p className="text-[13px] text-gray-500 leading-relaxed">
-                  Загрузите файлы из вашей базы знаний — регламенты, инструкции,
-                  документы. Мы автоматически извлечём текст.
-                </p>
-              </div>
-              <button
-                onClick={() => setDialogOpen(true)}
-                className="flex items-center gap-2 rounded-xl bg-lime px-5 py-2.5 text-[13px] font-semibold text-[#0B0B0F] hover:brightness-95 transition shadow-sm"
-              >
-                <Plus size={14} />
-                Создать первый курс
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Empty state: filters found nothing */}
-        {courses.length > 0 && filtered.length === 0 && (
-          <div className="flex flex-col items-center gap-4 py-16 text-center">
-            <div className="w-12 h-12 rounded-2xl bg-gray-100 flex items-center justify-center">
-              <Search size={20} className="text-gray-400" />
-            </div>
-            <div>
-              <p className="text-[15px] font-medium text-gray-700">Ничего не найдено</p>
-              <p className="text-[13px] text-gray-400 mt-1">Попробуйте другой запрос или сбросьте фильтры</p>
-            </div>
             <button
-              onClick={resetFilters}
-              className="text-[13px] font-medium text-lime hover:brightness-90 transition-colors"
+              onClick={() => setDialogOpen(true)}
+              className="flex items-center gap-2 bg-[#85EB59] text-black font-semibold text-[13px] px-4 py-2.5 rounded-xl hover:brightness-95 active:scale-[0.98] transition shadow-[0_4px_12px_rgba(133,235,89,0.3)] shrink-0"
             >
-              Сбросить фильтры
+              <Plus size={15} />
+              Создать курс
             </button>
           </div>
-        )}
 
-        {/* Course grid */}
-        {filtered.length > 0 && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {filtered.map((course) => (
-              <CourseCard key={course.courseId} course={course} />
-            ))}
-          </div>
-        )}
+          {fetchError && (
+            <div className="mx-6 mt-4 rounded-xl bg-red-50 border border-red-100 px-4 py-3 text-[13px] text-red-600">
+              {fetchError}
+            </div>
+          )}
+
+          {/* Table */}
+          {filtered.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[900px]">
+                <thead>
+                  <tr className="bg-gray-50/70 border-b border-gray-100">
+                    <th className="px-6 py-3.5 text-left text-[11px] font-bold text-gray-400 uppercase tracking-wider">
+                      Название курса
+                    </th>
+                    <th className="px-4 py-3.5 text-left text-[11px] font-bold text-gray-400 uppercase tracking-wider w-32">
+                      Статус
+                    </th>
+                    <th className="px-4 py-3.5 text-center text-[11px] font-bold text-gray-400 uppercase tracking-wider w-28">
+                      Назначено
+                    </th>
+                    <th className="px-4 py-3.5 text-left text-[11px] font-bold text-gray-400 uppercase tracking-wider w-44">
+                      Прогресс
+                    </th>
+                    <th className="px-4 py-3.5 text-center text-[11px] font-bold text-gray-400 uppercase tracking-wider w-36">
+                      Ср. результат
+                    </th>
+                    <th className="px-4 py-3.5 text-left text-[11px] font-bold text-gray-400 uppercase tracking-wider w-40">
+                      Проблемные темы
+                    </th>
+                    <th className="px-6 py-3.5 text-right text-[11px] font-bold text-gray-400 uppercase tracking-wider w-32">
+                      Обновлён
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {paginated.map((course) => {
+                    const isReady = course.overallStatus === 'ready';
+                    const coverIdx = getCoverIndex(course.courseId);
+                    const { bg } = COVER_COLORS[coverIdx];
+                    const icon = COVER_ICONS[coverIdx];
+                    const { progress, score, problems } = getCourseStats(course.courseId);
+                    const assigned = course.employeesCount ?? 0;
+
+                    return (
+                      <tr
+                        key={course.courseId}
+                        onClick={() => router.push(`/curator/courses/${course.courseId}`)}
+                        className="hover:bg-gray-50/60 transition-colors cursor-pointer group"
+                      >
+                        {/* Course name */}
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className={cn('w-10 h-10 rounded-xl flex items-center justify-center text-[18px] shrink-0', bg)}>
+                              {icon}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="text-[13px] font-semibold text-gray-900 group-hover:text-[#3d7a10] transition-colors truncate max-w-[260px]">
+                                {course.title}
+                              </div>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                <button
+                                  onClick={(e) => copyCode(e, course.inviteCode ?? '')}
+                                  className="inline-flex items-center gap-1 text-[10px] font-mono text-gray-400 hover:text-gray-600 transition-colors"
+                                  title="Скопировать код"
+                                >
+                                  <Copy size={9} />
+                                  {copied === course.inviteCode ? 'Скопировано!' : (course.inviteCode ?? '——')}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Status */}
+                        <td className="px-4 py-4">
+                          {isReady ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-green-100 text-green-800">
+                              <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                              Активен
+                            </span>
+                          ) : course.overallStatus === 'processing' ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-amber-100 text-amber-700">
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                              Обработка
+                            </span>
+                          ) : course.overallStatus === 'error' ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-red-100 text-red-600">
+                              <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                              Ошибка
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-gray-100 text-gray-500 border border-gray-200">
+                              <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
+                              Черновик
+                            </span>
+                          )}
+                        </td>
+
+                        {/* Назначено */}
+                        <td className="px-4 py-4 text-center">
+                          {isReady ? (
+                            <span className="text-[13px] font-medium text-gray-700">{assigned}</span>
+                          ) : (
+                            <span className="text-[13px] text-gray-400">—</span>
+                          )}
+                        </td>
+
+                        {/* Прогресс */}
+                        <td className="px-4 py-4">
+                          {isReady && assigned > 0 ? (
+                            <div className="flex items-center gap-2.5">
+                              <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-[#85EB59] rounded-full"
+                                  style={{ width: `${progress}%` }}
+                                />
+                              </div>
+                              <span className="text-[11px] font-bold text-gray-700 w-8 text-right">
+                                {progress}%
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-[12px] text-gray-400">Нет данных</span>
+                          )}
+                        </td>
+
+                        {/* Ср. результат */}
+                        <td className="px-4 py-4 text-center">
+                          {isReady && assigned > 0 ? (
+                            <span>
+                              <span className="text-[13px] font-bold text-gray-900">{score}</span>
+                              <span className="text-[11px] text-gray-400">/5</span>
+                            </span>
+                          ) : (
+                            <span className="text-[13px] text-gray-400">—</span>
+                          )}
+                        </td>
+
+                        {/* Проблемные темы */}
+                        <td className="px-4 py-4">
+                          {problems > 0 ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-red-50 text-red-600 border border-red-100">
+                              {problems} {problems === 1 ? 'тема' : 'темы'}
+                              <AlertTriangle size={11} />
+                            </span>
+                          ) : (
+                            <span className="text-[13px] text-gray-400">—</span>
+                          )}
+                        </td>
+
+                        {/* Обновлён */}
+                        <td className="px-6 py-4 text-right">
+                          <span className="text-[12px] text-gray-400">
+                            {formatUpdated(course.createdAt)}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            /* Empty filtered state */
+            <div className="flex flex-col items-center gap-4 py-16 text-center">
+              <div className="w-12 h-12 rounded-2xl bg-gray-100 flex items-center justify-center">
+                <Search size={20} className="text-gray-400" />
+              </div>
+              <div>
+                <p className="text-[15px] font-medium text-gray-700">Ничего не найдено</p>
+                <p className="text-[13px] text-gray-400 mt-1">Попробуйте другой запрос или сбросьте фильтры</p>
+              </div>
+              <button
+                onClick={() => { setQuery(''); setStatusFilter('all'); }}
+                className="text-[13px] font-medium text-[#3d7a10] hover:underline"
+              >
+                Сбросить фильтры
+              </button>
+            </div>
+          )}
+
+          {/* Pagination */}
+          {filtered.length > PAGE_SIZE && (
+            <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between">
+              <span className="text-[12px] text-gray-400">
+                Показано {Math.min((page - 1) * PAGE_SIZE + 1, filtered.length)}–
+                {Math.min(page * PAGE_SIZE, filtered.length)} из {filtered.length} курсов
+              </span>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                  className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                >
+                  <ChevronLeft size={15} />
+                </button>
+                {Array.from({ length: totalPages }, (_, i) => i + 1)
+                  .filter((p) => p === 1 || p === totalPages || Math.abs(p - page) <= 1)
+                  .reduce<(number | '...')[]>((acc, p, idx, arr) => {
+                    if (idx > 0 && typeof arr[idx - 1] === 'number' && (p as number) - (arr[idx - 1] as number) > 1) {
+                      acc.push('...');
+                    }
+                    acc.push(p);
+                    return acc;
+                  }, [])
+                  .map((p, idx) =>
+                    p === '...' ? (
+                      <span key={`ellipsis-${idx}`} className="w-8 h-8 flex items-center justify-center text-gray-400 text-[13px]">…</span>
+                    ) : (
+                      <button
+                        key={p}
+                        onClick={() => setPage(p as number)}
+                        className={cn(
+                          'w-8 h-8 flex items-center justify-center rounded-lg text-[13px] font-medium transition-colors',
+                          page === p
+                            ? 'bg-black text-white'
+                            : 'text-gray-600 hover:bg-gray-100'
+                        )}
+                      >
+                        {p}
+                      </button>
+                    )
+                  )}
+                <button
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page === totalPages}
+                  className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                >
+                  <ChevronRight size={15} />
+                </button>
+              </div>
+            </div>
+          )}
+
+        </div>
       </div>
 
       <CreateCourseWizard
