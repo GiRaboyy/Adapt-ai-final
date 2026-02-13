@@ -1,23 +1,23 @@
 'use client';
 
 /**
- * CreateCourseWizard — fullscreen 2-step course creation wizard.
- * Step 1: Upload files + parse (POST /api/courses/draft)
- * Step 2: Yandex AI generates questions → user edits → finalize (POST /api/courses/finalize)
+ * CreateCourseWizard — fullscreen 3-phase course creation wizard.
+ * Phase 1 (form):    title + size radio cards + file upload → POST /api/courses/draft
+ * Phase 2 (loading): animated progress steps → POST /api/training/generate
+ * Phase 3 (editing): 3-column question editor → POST /api/courses/finalize
  */
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Upload, X, FileText, File, CheckCircle2, AlertCircle,
-  Loader2, CloudUpload, ChevronUp, ChevronDown, Plus, Trash2,
+  X, FileText, File, AlertCircle, CloudUpload, Plus, Trash2,
+  ChevronUp, ChevronDown, Check, Loader2,
 } from 'lucide-react';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import { apiFetch } from '@/lib/api';
 import {
   CourseManifest, CourseSize, Question, QuestionType,
-  DraftPayload, DraftUploadedFile,
+  DraftPayload,
 } from '@/lib/types';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -25,10 +25,17 @@ import {
 const MAX_FILE_SIZE = 30 * 1024 * 1024;
 const ALLOWED_EXTENSIONS = ['.pdf', '.txt', '.doc', '.docx'];
 
-const SIZE_OPTIONS: { value: CourseSize; label: string; description: string }[] = [
-  { value: 'small',  label: 'Короткий', description: '8-12 вопросов' },
-  { value: 'medium', label: 'Средний',  description: '12-18 вопросов' },
-  { value: 'large',  label: 'Большой',  description: '18-30 вопросов' },
+const SIZE_OPTIONS: { value: CourseSize; label: string; duration: string }[] = [
+  { value: 'small',  label: 'Короткий', duration: '10–15 минут' },
+  { value: 'medium', label: 'Средний',  duration: '20–30 минут' },
+  { value: 'large',  label: 'Длинный',  duration: '45–60 минут' },
+];
+
+const LOADING_STEPS = [
+  'Читаем материалы',
+  'Строим план модулей',
+  'Генерируем уроки',
+  'Генерируем вопросы',
 ];
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -40,14 +47,7 @@ interface FileEntry {
   error?: string;
 }
 
-type WizardStep = 1 | 2;
-type Phase =
-  | 'idle'       // Step 1 form
-  | 'uploading'  // Step 1 in flight
-  | 'generating' // Step 2 calling Yandex
-  | 'editing'    // Step 2 question editor
-  | 'saving'     // Step 2 finalizing
-  | 'done';
+type Phase = 'form' | 'loading' | 'editing' | 'saving';
 
 interface Props {
   open: boolean;
@@ -81,204 +81,929 @@ function validateFile(file: File): string | null {
 
 function fileIcon(name: string) {
   const ext = getFileExt(name);
-  if (ext === '.pdf') return <FileText size={15} className="text-red-400" />;
-  if (ext === '.docx' || ext === '.doc') return <FileText size={15} className="text-blue-400" />;
-  return <File size={15} className="text-gray-400" />;
+  if (ext === '.pdf') return <FileText size={16} className="text-red-500" />;
+  if (ext === '.docx' || ext === '.doc') return <FileText size={16} className="text-blue-500" />;
+  return <File size={16} className="text-gray-400" />;
 }
 
 function newQuestion(type: QuestionType): Question {
   return type === 'quiz'
-    ? {
-        id: crypto.randomUUID(),
-        type: 'quiz',
-        prompt: '',
-        quizOptions: ['', '', '', ''],
-        correctIndex: 0,
-      }
-    : {
-        id: crypto.randomUUID(),
-        type: 'open',
-        prompt: '',
-        expectedAnswer: '',
-      };
+    ? { id: crypto.randomUUID(), type: 'quiz', prompt: '', quizOptions: ['', '', '', ''], correctIndex: 0 }
+    : { id: crypto.randomUUID(), type: 'open', prompt: '', expectedAnswer: '' };
+}
+
+// ─── Shared Header ────────────────────────────────────────────────────────────
+
+function WizardHeader({
+  breadcrumb,
+  right,
+}: {
+  breadcrumb: string;
+  right?: React.ReactNode;
+}) {
+  return (
+    <header className="bg-black text-white h-16 flex items-center justify-between px-6 shrink-0 z-50">
+      <div className="flex items-center gap-6">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 bg-[#85EB59] rounded flex items-center justify-center">
+            <span className="font-black text-black text-lg italic">⚡</span>
+          </div>
+          <span className="font-bold text-xl tracking-tighter italic">ADAPT</span>
+        </div>
+        <nav className="flex items-center gap-1.5 text-sm text-gray-400">
+          <span className="hover:text-white transition-colors cursor-default">Курсы</span>
+          <span className="text-gray-600 text-xs">›</span>
+          <span className="text-white font-medium">{breadcrumb}</span>
+        </nav>
+      </div>
+      <div className="flex items-center gap-4">{right}</div>
+    </header>
+  );
 }
 
 // ─── Progress Bar ─────────────────────────────────────────────────────────────
 
-function ProgressBar({ step }: { step: WizardStep }) {
-  const steps = ['Файлы и параметры', 'Тренинг и вопросы'];
+function ProgressBar({ phase }: { phase: Phase }) {
+  const step1Done = phase === 'editing' || phase === 'saving';
+  const step1Loading = phase === 'loading';
+  const step1Active = phase === 'form';
+  const step2Active = phase === 'editing' || phase === 'saving';
+
   return (
-    <div className="flex items-center gap-0 w-full max-w-sm">
-      {steps.map((label, idx) => {
-        const num = idx + 1 as WizardStep;
-        const isActive = step === num;
-        const isDone = step > num;
-        return (
-          <div key={num} className="flex items-center flex-1 last:flex-none">
-            <div className="flex items-center gap-2">
-              <div
-                className={cn(
-                  'w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 transition-colors',
-                  isDone ? 'bg-lime text-[#0F0F14]' :
-                  isActive ? 'bg-[#0F0F14] text-white' :
-                  'bg-gray-200 text-gray-400'
-                )}
-              >
-                {isDone ? <CheckCircle2 size={13} /> : num}
+    <div className="border-b border-gray-100 bg-white shrink-0 z-40">
+      <div className="max-w-4xl mx-auto py-5 px-4">
+        <div className="flex items-center justify-center gap-16 relative">
+          {/* Connector line */}
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-40 h-[2px] bg-gray-100 -z-10 overflow-hidden">
+            <div
+              className={cn(
+                'h-full transition-all duration-700',
+                step1Done
+                  ? 'bg-[#85EB59] w-full'
+                  : step1Loading
+                  ? 'bg-[#85EB59] w-1/2 animate-pulse'
+                  : 'bg-gray-200 w-0'
+              )}
+            />
+          </div>
+
+          {/* Step 1 */}
+          <div className="flex items-center gap-3 bg-white px-2">
+            <div
+              className={cn(
+                'w-7 h-7 rounded-full border-2 flex items-center justify-center text-sm font-bold transition-all',
+                step1Done
+                  ? 'border-[#85EB59] bg-[#85EB59] text-black'
+                  : step1Active
+                  ? 'border-[#85EB59] bg-[#85EB59] text-black shadow-[0_0_10px_rgba(133,235,89,0.3)]'
+                  : step1Loading
+                  ? 'border-[#85EB59] bg-white text-[#85EB59]'
+                  : 'border-gray-200 text-gray-400 bg-white'
+              )}
+            >
+              {step1Done ? (
+                <Check size={13} strokeWidth={3} />
+              ) : step1Loading ? (
+                <Loader2 size={13} className="animate-spin" />
+              ) : (
+                '1'
+              )}
+            </div>
+            <span
+              className={cn(
+                'text-xs font-bold uppercase tracking-wider',
+                step1Done
+                  ? 'text-gray-400'
+                  : step1Active || step1Loading
+                  ? 'text-[#85EB59]'
+                  : 'text-gray-400'
+              )}
+            >
+              {step1Loading ? 'В процессе...' : step1Done ? 'Создание курса' : 'Создание курса'}
+            </span>
+          </div>
+
+          {/* Step 2 */}
+          <div className={cn('flex items-center gap-3 bg-white px-2', !step2Active && 'opacity-40')}>
+            <div
+              className={cn(
+                'w-7 h-7 rounded-full border-2 flex items-center justify-center text-sm font-bold',
+                step2Active
+                  ? 'border-[#85EB59] bg-[#85EB59] text-black shadow-[0_0_0_3px_rgba(133,235,89,0.2)]'
+                  : 'border-gray-200 text-gray-400 bg-white'
+              )}
+            >
+              2
+            </div>
+            <span
+              className={cn(
+                'text-xs font-bold uppercase tracking-wider',
+                step2Active ? 'text-black' : 'text-gray-400'
+              )}
+            >
+              Редактирование
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Phase 1: Form ────────────────────────────────────────────────────────────
+
+function FormPhase({
+  title,
+  setTitle,
+  courseSize,
+  setCourseSize,
+  files,
+  isDragging,
+  setIsDragging,
+  fileInputRef,
+  addFiles,
+  removeFile,
+  validationErrors,
+  error,
+  onSubmit,
+  isSubmitting,
+  onClose,
+}: {
+  title: string;
+  setTitle: (v: string) => void;
+  courseSize: CourseSize;
+  setCourseSize: (v: CourseSize) => void;
+  files: FileEntry[];
+  isDragging: boolean;
+  setIsDragging: (v: boolean) => void;
+  fileInputRef: React.RefObject<HTMLInputElement>;
+  addFiles: (files: File[]) => void;
+  removeFile: (id: string) => void;
+  validationErrors: Record<string, string>;
+  error: string;
+  onSubmit: () => void;
+  isSubmitting: boolean;
+  onClose: () => void;
+}) {
+  const isValid =
+    title.trim().length > 0 &&
+    files.length > 0 &&
+    files.some((f) => f.status !== 'error');
+
+  return (
+    <>
+      <WizardHeader
+        breadcrumb="Новый курс"
+        right={
+          <button
+            onClick={onClose}
+            className="text-sm font-medium text-gray-400 hover:text-white transition-colors"
+          >
+            Назад к курсам
+          </button>
+        }
+      />
+      <ProgressBar phase="form" />
+
+      <main className="flex-1 overflow-y-auto">
+        <div className="max-w-[840px] mx-auto py-12 px-4 space-y-12">
+          {/* Heading */}
+          <div className="text-center space-y-2">
+            <h1 className="text-3xl font-bold text-gray-900">Создание нового курса</h1>
+            <p className="text-gray-500">
+              Заполните основные параметры, загрузите материалы, и ИИ создаст структуру обучения.
+            </p>
+          </div>
+
+          {/* Error */}
+          {error && (
+            <div className="flex items-start gap-2.5 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3">
+              <AlertCircle size={15} className="text-amber-600 shrink-0 mt-0.5" />
+              <p className="text-sm text-amber-800 flex-1">{error}</p>
+            </div>
+          )}
+
+          {/* Title */}
+          <section className="space-y-4">
+            <div className="flex justify-between items-baseline">
+              <label className="block text-sm font-bold text-gray-900 uppercase tracking-wide">
+                Название курса
+              </label>
+              <span className="text-xs text-gray-400">Обязательно</span>
+            </div>
+            <input
+              autoFocus
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Например: Основы кибербезопасности для сотрудников"
+              disabled={isSubmitting}
+              className="w-full border border-gray-200 rounded-lg focus:border-[#85EB59] focus:ring-1 focus:ring-[#85EB59] transition-colors py-3 px-4 text-lg placeholder:text-gray-300 outline-none disabled:opacity-50"
+            />
+            <p className="text-sm text-gray-500 flex items-center gap-1.5">
+              <span className="text-base">👁</span>
+              Это название увидят сотрудники в личном кабинете
+            </p>
+          </section>
+
+          <hr className="border-gray-100" />
+
+          {/* Course size */}
+          <section className="space-y-4">
+            <div className="flex justify-between items-baseline">
+              <label className="block text-sm font-bold text-gray-900 uppercase tracking-wide">
+                Размер курса
+              </label>
+              <span className="text-xs text-gray-400">Обязательно</span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {SIZE_OPTIONS.map((opt) => {
+                const selected = courseSize === opt.value;
+                return (
+                  <label key={opt.value} className="cursor-pointer">
+                    <input
+                      type="radio"
+                      name="courseSize"
+                      value={opt.value}
+                      checked={selected}
+                      onChange={() => setCourseSize(opt.value)}
+                      className="sr-only"
+                    />
+                    <div
+                      className={cn(
+                        'p-5 border-2 rounded-xl transition-all h-full flex flex-col justify-between',
+                        selected
+                          ? 'border-[#85EB59] bg-[#85EB59]/5 ring-1 ring-[#85EB59]'
+                          : 'border-gray-200 bg-white hover:border-gray-300'
+                      )}
+                    >
+                      <div>
+                        <span className="block text-base font-bold text-gray-900 mb-1">
+                          {opt.label}
+                        </span>
+                        <span className="text-sm text-gray-500">{opt.duration}</span>
+                      </div>
+                      <div
+                        className={cn(
+                          'mt-4 flex items-center gap-1 text-xs font-medium transition-opacity text-[#85EB59]',
+                          selected ? 'opacity-100' : 'opacity-0'
+                        )}
+                      >
+                        <Check size={14} />
+                        Выбрано
+                      </div>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+            <p className="text-sm text-gray-500">
+              ИИ подберёт оптимальное количество модулей под выбранный объём.
+            </p>
+          </section>
+
+          <hr className="border-gray-100" />
+
+          {/* File upload */}
+          <section className="space-y-6">
+            <div className="flex justify-between items-baseline">
+              <label className="block text-sm font-bold text-gray-900 uppercase tracking-wide">
+                Файлы для генерации
+              </label>
+              <span className="text-xs text-gray-400">Минимум 1 файл</span>
+            </div>
+
+            {/* Uploaded files */}
+            {files.length > 0 && (
+              <div className="space-y-3">
+                {files.map((entry) => (
+                  <div
+                    key={entry.id}
+                    className="flex items-center justify-between p-4 border border-gray-200 rounded-lg bg-gray-50 hover:border-gray-300 transition-colors"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 rounded bg-white border border-gray-200 flex items-center justify-center">
+                        {fileIcon(entry.file.name)}
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900">{entry.file.name}</p>
+                        <p className="text-xs text-gray-500">{formatFileSize(entry.file.size)}</p>
+                        {entry.error && (
+                          <p className="text-xs text-red-500 mt-0.5">{entry.error}</p>
+                        )}
+                      </div>
+                    </div>
+                    {!isSubmitting && (
+                      <button
+                        type="button"
+                        onClick={() => removeFile(entry.id)}
+                        className="text-gray-400 hover:text-red-500 p-2 rounded-full hover:bg-white transition-all"
+                      >
+                        <X size={18} />
+                      </button>
+                    )}
+                  </div>
+                ))}
               </div>
-              <span
-                className={cn(
-                  'text-xs font-medium whitespace-nowrap',
-                  isActive ? 'text-[#0F0F14]' : isDone ? 'text-gray-500' : 'text-gray-400'
-                )}
-              >
-                {label}
+            )}
+
+            {/* Drag & drop zone */}
+            <div
+              className={cn(
+                'border-2 border-dashed rounded-2xl p-10 flex flex-col items-center justify-center text-center cursor-pointer group transition-all bg-gray-50/50',
+                isDragging
+                  ? 'border-[#85EB59] bg-[#85EB59]/5'
+                  : 'border-gray-300 hover:border-[#85EB59] hover:bg-[#85EB59]/5',
+                isSubmitting && 'pointer-events-none opacity-60'
+              )}
+              onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setIsDragging(false);
+                addFiles(Array.from(e.dataTransfer.files));
+              }}
+              onClick={() => !isSubmitting && fileInputRef.current?.click()}
+            >
+              <div className="w-14 h-14 rounded-full bg-white shadow-sm border border-gray-100 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                <CloudUpload
+                  size={28}
+                  className={cn(
+                    'transition-colors',
+                    isDragging ? 'text-[#85EB59]' : 'text-gray-400 group-hover:text-[#85EB59]'
+                  )}
+                />
+              </div>
+              <h3 className="text-lg font-bold text-gray-900 mb-1">Перетащите файлы сюда</h3>
+              <p className="text-sm text-gray-500 mb-6">или нажмите для выбора с компьютера</p>
+              <div className="flex flex-wrap justify-center gap-2">
+                {['PDF', 'DOCX', 'TXT'].map((fmt) => (
+                  <span
+                    key={fmt}
+                    className="px-2.5 py-1 bg-gray-100 rounded text-xs font-bold text-gray-400 uppercase tracking-wider"
+                  >
+                    {fmt}
+                  </span>
+                ))}
+              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept=".pdf,.txt,.doc,.docx"
+                className="hidden"
+                onChange={(e) => {
+                  if (e.target.files) {
+                    addFiles(Array.from(e.target.files));
+                    e.target.value = '';
+                  }
+                }}
+              />
+            </div>
+
+            {/* Validation errors */}
+            {Object.entries(validationErrors).map(([name, err]) => (
+              <p key={name} className="text-xs text-red-500 flex items-center gap-1.5">
+                <AlertCircle size={12} />
+                <span>
+                  <b>{name}:</b> {err}
+                </span>
+              </p>
+            ))}
+          </section>
+
+          {/* CTA */}
+          <button
+            onClick={onSubmit}
+            disabled={!isValid || isSubmitting}
+            className={cn(
+              'w-full py-4 px-6 rounded-lg font-semibold flex items-center justify-center gap-2 transition-all shadow-sm text-base',
+              isValid && !isSubmitting
+                ? 'bg-[#85EB59] hover:bg-[#76d44f] text-black'
+                : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+            )}
+          >
+            {isSubmitting ? (
+              <>
+                <Loader2 size={16} className="animate-spin" />
+                Загружаем файлы...
+              </>
+            ) : (
+              'Создать курс с помощью ИИ →'
+            )}
+          </button>
+
+          <div className="h-8" />
+        </div>
+      </main>
+    </>
+  );
+}
+
+// ─── Phase 2: Loading ─────────────────────────────────────────────────────────
+
+function LoadingPhase({
+  loadingStep,
+  onCancel,
+}: {
+  loadingStep: number; // 0-3, which step is active
+  onCancel: () => void;
+}) {
+  return (
+    <>
+      <WizardHeader breadcrumb="Новый курс" />
+      <ProgressBar phase="loading" />
+
+      <main className="flex-1 flex flex-col items-center justify-center p-8 relative overflow-hidden">
+        {/* Background decorations */}
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-[#85EB59]/5 rounded-full blur-3xl pointer-events-none -z-10" />
+        <div className="absolute bottom-1/4 right-1/4 w-64 h-64 bg-[#FFBA49]/5 rounded-full blur-3xl pointer-events-none -z-10" />
+
+        <div className="max-w-md w-full flex flex-col items-center text-center">
+          {/* Spinner */}
+          <div className="relative w-32 h-32 mb-12 flex items-center justify-center">
+            {/* Pulse ring */}
+            <div className="absolute inset-0 rounded-full border-2 border-[#85EB59] animate-ping opacity-20" />
+            <svg className="w-full h-full transform -rotate-90 absolute inset-0">
+              <circle cx="64" cy="64" r="60" fill="none" stroke="#f3f4f6" strokeWidth="4" />
+              <circle
+                cx="64"
+                cy="64"
+                r="60"
+                fill="none"
+                stroke="#85EB59"
+                strokeWidth="4"
+                strokeDasharray="377"
+                strokeDashoffset="100"
+                style={{ animation: 'dash 3s ease-in-out infinite' }}
+              />
+            </svg>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <span className="text-5xl">✨</span>
+            </div>
+          </div>
+
+          <h1 className="text-3xl font-black tracking-tight mb-3 text-gray-900">
+            Генерируем курс...
+          </h1>
+          <p className="text-gray-500 text-lg mb-12">Анализируем файлы и собираем структуру</p>
+
+          {/* Progress steps */}
+          <div className="w-full max-w-sm space-y-5 bg-white rounded-2xl p-6 border border-gray-50 shadow-[0_4px_20px_rgba(0,0,0,0.02)]">
+            {LOADING_STEPS.map((label, idx) => {
+              const isDone = idx < loadingStep;
+              const isActive = idx === loadingStep;
+              const isPending = idx > loadingStep;
+
+              return (
+                <div
+                  key={idx}
+                  className={cn(
+                    'flex items-center gap-4 transition-all duration-500',
+                    isPending && 'opacity-40'
+                  )}
+                >
+                  {isDone ? (
+                    <div className="w-6 h-6 rounded-full bg-[#85EB59] flex items-center justify-center shrink-0">
+                      <Check size={12} strokeWidth={3} className="text-black" />
+                    </div>
+                  ) : isActive ? (
+                    <div className="w-6 h-6 rounded-full border-2 border-[#85EB59] border-t-transparent animate-spin shrink-0" />
+                  ) : (
+                    <div className="w-6 h-6 rounded-full border-2 border-gray-200 shrink-0" />
+                  )}
+                  <span
+                    className={cn(
+                      'text-sm transition-all',
+                      isDone || isActive ? 'font-medium text-gray-900' : 'font-medium text-gray-500'
+                    )}
+                  >
+                    {label}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Cancel */}
+          <div className="mt-12">
+            <button
+              onClick={onCancel}
+              className="text-sm font-medium text-gray-400 hover:text-red-500 transition-colors flex items-center gap-2"
+            >
+              <X size={18} />
+              Отменить генерацию
+            </button>
+          </div>
+        </div>
+      </main>
+
+      <style>{`
+        @keyframes dash {
+          0% { stroke-dashoffset: 377; }
+          50% { stroke-dashoffset: 100; }
+          100% { stroke-dashoffset: 377; }
+        }
+      `}</style>
+    </>
+  );
+}
+
+// ─── Phase 3: Editing ─────────────────────────────────────────────────────────
+
+function EditingPhase({
+  title,
+  questions,
+  selectedIdx,
+  setSelectedIdx,
+  updateQuestion,
+  deleteQuestion,
+  moveUp,
+  moveDown,
+  addQuestion,
+  onSave,
+  isSaving,
+  error,
+}: {
+  title: string;
+  questions: Question[];
+  selectedIdx: number;
+  setSelectedIdx: (i: number) => void;
+  updateQuestion: (idx: number, q: Question) => void;
+  deleteQuestion: (idx: number) => void;
+  moveUp: (idx: number) => void;
+  moveDown: (idx: number) => void;
+  addQuestion: (type: QuestionType) => void;
+  onSave: () => void;
+  isSaving: boolean;
+  error: string;
+}) {
+  const selected = questions[selectedIdx] ?? null;
+
+  return (
+    <>
+      <WizardHeader
+        breadcrumb={title || 'Редактирование'}
+        right={
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 bg-zinc-800 px-3 py-1.5 rounded-full text-xs font-medium border border-zinc-700">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#85EB59] shadow-[0_0_6px_#85EB59]" />
+              <span className="text-gray-200">Черновик</span>
+            </div>
+            <button
+              onClick={onSave}
+              disabled={isSaving || questions.length === 0}
+              className={cn(
+                'bg-[#85EB59] hover:bg-[#76d44f] text-black font-semibold py-2.5 px-6 rounded-lg transition-all flex items-center gap-2 text-sm shadow-sm',
+                (isSaving || questions.length === 0) && 'opacity-50 cursor-not-allowed'
+              )}
+            >
+              {isSaving && <Loader2 size={14} className="animate-spin" />}
+              Сохранить
+            </button>
+          </div>
+        }
+      />
+      <ProgressBar phase="editing" />
+
+      {/* Error */}
+      {error && (
+        <div className="flex items-center gap-2.5 px-6 py-2 bg-amber-50 border-b border-amber-200">
+          <AlertCircle size={14} className="text-amber-600 shrink-0" />
+          <p className="text-sm text-amber-800">{error}</p>
+        </div>
+      )}
+
+      <div className="flex flex-1 overflow-hidden">
+        {/* Left sidebar — structure/navigation */}
+        <aside className="w-[300px] border-r border-gray-100 flex flex-col shrink-0 bg-white">
+          <div className="p-5 border-b border-gray-100">
+            <h3 className="font-bold text-xs uppercase tracking-widest text-gray-400">
+              Структура курса
+            </h3>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3 space-y-1">
+            {questions.map((q, idx) => {
+              const isSelected = idx === selectedIdx;
+              return (
+                <div
+                  key={q.id}
+                  onClick={() => setSelectedIdx(idx)}
+                  className={cn(
+                    'flex items-center gap-2 p-2.5 rounded-lg cursor-pointer transition-all relative',
+                    isSelected
+                      ? 'bg-[#85EB59]/10 border border-[#85EB59]/20 shadow-sm'
+                      : 'hover:bg-gray-50 border border-transparent'
+                  )}
+                >
+                  {isSelected && (
+                    <div className="absolute -left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-[#85EB59] rounded-r" />
+                  )}
+                  <span
+                    className={cn(
+                      'text-[9px] font-bold px-1.5 py-0.5 rounded uppercase shrink-0',
+                      q.type === 'quiz'
+                        ? 'bg-[#FFBA49] text-black'
+                        : 'bg-gray-100 text-gray-500'
+                    )}
+                  >
+                    {q.type === 'quiz' ? 'Квиз' : 'Откр.'}
+                  </span>
+                  <span
+                    className={cn(
+                      'text-sm truncate flex-1',
+                      isSelected ? 'font-medium text-black' : 'text-gray-600'
+                    )}
+                  >
+                    {idx + 1}. {q.prompt || 'Без названия'}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          <div className="p-4 border-t border-gray-100">
+            <button
+              onClick={() => {
+                addQuestion('quiz');
+                setSelectedIdx(questions.length);
+              }}
+              className="w-full py-2.5 text-xs font-bold uppercase tracking-wide border border-dashed border-gray-300 rounded-lg text-gray-500 hover:border-[#85EB59] hover:text-[#85EB59] hover:bg-[#85EB59]/5 transition-all flex items-center justify-center gap-2"
+            >
+              <Plus size={14} />
+              Добавить вопрос
+            </button>
+          </div>
+        </aside>
+
+        {/* Center — question editor */}
+        <main className="flex-1 overflow-y-auto bg-[#FAFAFA]">
+          <div className="max-w-3xl mx-auto py-10 px-8 pb-32">
+            {questions.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-24 text-center gap-4">
+                <p className="text-gray-400 text-lg">Вопросы не сгенерированы</p>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => addQuestion('quiz')}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[#85EB59] text-black font-semibold text-sm hover:bg-[#76d44f] transition"
+                  >
+                    <Plus size={15} />
+                    Добавить Quiz
+                  </button>
+                  <button
+                    onClick={() => addQuestion('open')}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-gray-200 text-gray-700 font-medium text-sm hover:bg-gray-50 transition"
+                  >
+                    <Plus size={15} />
+                    Открытый вопрос
+                  </button>
+                </div>
+              </div>
+            ) : selected ? (
+              <>
+                {/* Editable title */}
+                <div className="mb-8 group">
+                  <input
+                    type="text"
+                    value={selected.prompt}
+                    onChange={(e) => updateQuestion(selectedIdx, { ...selected, prompt: e.target.value })}
+                    placeholder="Текст вопроса..."
+                    className="w-full text-3xl font-bold bg-transparent border-none p-0 focus:ring-0 text-gray-900 placeholder-gray-300 outline-none"
+                  />
+                  <div className="h-0.5 w-full bg-transparent group-hover:bg-gray-200 mt-2 transition-colors" />
+                </div>
+
+                {/* Question editor card */}
+                <div className="border-2 border-[#85EB59] rounded-2xl bg-white shadow-lg overflow-hidden">
+                  <div className="bg-[#85EB59]/10 px-6 py-4 border-b border-[#85EB59]/20 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <span className="bg-[#FFBA49] text-black text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wide">
+                        {selected.type === 'quiz' ? 'Квиз' : 'Открытый'}
+                      </span>
+                      <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">
+                        Редактирование вопроса
+                      </h3>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => moveUp(selectedIdx)}
+                        disabled={selectedIdx === 0}
+                        className="p-1.5 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                        title="Переместить вверх"
+                      >
+                        <ChevronUp size={15} />
+                      </button>
+                      <button
+                        onClick={() => moveDown(selectedIdx)}
+                        disabled={selectedIdx === questions.length - 1}
+                        className="p-1.5 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                        title="Переместить вниз"
+                      >
+                        <ChevronDown size={15} />
+                      </button>
+                      <button
+                        onClick={() => {
+                          deleteQuestion(selectedIdx);
+                          setSelectedIdx(Math.max(0, selectedIdx - 1));
+                        }}
+                        className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                        title="Удалить вопрос"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="p-6 space-y-6">
+                    {/* Prompt textarea */}
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold uppercase tracking-widest text-gray-400 pl-1">
+                        Текст вопроса
+                      </label>
+                      <textarea
+                        value={selected.prompt}
+                        onChange={(e) => updateQuestion(selectedIdx, { ...selected, prompt: e.target.value })}
+                        placeholder="Введите текст вопроса..."
+                        rows={2}
+                        className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-[#85EB59] focus:border-transparent text-base font-medium resize-none transition-all outline-none"
+                      />
+                    </div>
+
+                    {/* Quiz options */}
+                    {selected.type === 'quiz' && (
+                      <div className="space-y-3">
+                        <label className="text-xs font-bold uppercase tracking-widest text-gray-400 pl-1">
+                          Варианты ответа
+                        </label>
+                        {(selected.quizOptions ?? ['', '', '', '']).map((opt, i) => {
+                          const isCorrect = selected.correctIndex === i;
+                          return (
+                            <div
+                              key={i}
+                              className={cn(
+                                'flex items-center gap-3 p-3 rounded-xl border-2 transition-all',
+                                isCorrect
+                                  ? 'border-[#85EB59] bg-[#85EB59]/5'
+                                  : 'border-gray-200 bg-white hover:border-gray-300'
+                              )}
+                            >
+                              <input
+                                type="radio"
+                                name={`correct-${selected.id}`}
+                                checked={isCorrect}
+                                onChange={() =>
+                                  updateQuestion(selectedIdx, {
+                                    ...selected,
+                                    correctIndex: i as 0 | 1 | 2 | 3,
+                                  })
+                                }
+                                className="w-5 h-5 cursor-pointer accent-[#85EB59]"
+                              />
+                              <input
+                                type="text"
+                                value={opt}
+                                onChange={(e) => {
+                                  const opts = [
+                                    ...(selected.quizOptions ?? ['', '', '', '']),
+                                  ] as [string, string, string, string];
+                                  opts[i] = e.target.value;
+                                  updateQuestion(selectedIdx, { ...selected, quizOptions: opts });
+                                }}
+                                placeholder={`Вариант ${i + 1}`}
+                                className="flex-1 bg-transparent border-none focus:ring-0 font-medium text-gray-900 placeholder-gray-400 outline-none"
+                              />
+                              {isCorrect && (
+                                <div className="text-[#85EB59] flex items-center gap-1 text-xs font-bold uppercase px-2 shrink-0">
+                                  <Check size={14} />
+                                  Верно
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Open answer */}
+                    {selected.type === 'open' && (
+                      <div className="space-y-2">
+                        <label className="text-xs font-bold uppercase tracking-widest text-gray-400 pl-1">
+                          Ожидаемый ответ / критерии
+                        </label>
+                        <textarea
+                          value={selected.expectedAnswer ?? ''}
+                          onChange={(e) =>
+                            updateQuestion(selectedIdx, {
+                              ...selected,
+                              expectedAnswer: e.target.value,
+                            })
+                          }
+                          placeholder="Образец ответа или критерии оценки..."
+                          rows={4}
+                          className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-[#85EB59] focus:border-transparent text-base resize-none transition-all outline-none"
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Add question buttons */}
+                <div className="flex gap-3 mt-6">
+                  <button
+                    onClick={() => {
+                      addQuestion('quiz');
+                      setSelectedIdx(questions.length);
+                    }}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-dashed border-gray-300 text-sm font-medium text-gray-500 hover:border-[#85EB59] hover:text-[#85EB59] hover:bg-[#85EB59]/5 transition-all"
+                  >
+                    <Plus size={14} />
+                    Добавить Quiz
+                  </button>
+                  <button
+                    onClick={() => {
+                      addQuestion('open');
+                      setSelectedIdx(questions.length);
+                    }}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-dashed border-gray-300 text-sm font-medium text-gray-500 hover:border-[#85EB59] hover:text-[#85EB59] hover:bg-[#85EB59]/5 transition-all"
+                  >
+                    <Plus size={14} />
+                    Открытый вопрос
+                  </button>
+                </div>
+              </>
+            ) : null}
+          </div>
+        </main>
+
+        {/* Right sidebar — questions overview */}
+        <aside className="w-[320px] border-l border-gray-100 flex flex-col shrink-0 bg-white">
+          <div className="flex items-center justify-between p-5 border-b border-gray-100">
+            <div className="flex items-center gap-2">
+              <h3 className="font-bold text-xs uppercase tracking-widest text-gray-900">
+                Вопросы
+              </h3>
+              <span className="px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded text-[10px] font-bold">
+                {questions.length}
               </span>
             </div>
-            {idx < steps.length - 1 && (
-              <div className={cn('flex-1 h-px mx-3', step > num ? 'bg-lime' : 'bg-gray-200')} />
-            )}
           </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// ─── Error Banner ─────────────────────────────────────────────────────────────
-
-function ErrorBanner({ message, onDismiss }: { message: string; onDismiss?: () => void }) {
-  return (
-    <div className="flex items-start gap-2.5 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3">
-      <AlertCircle size={15} className="text-amber-600 shrink-0 mt-0.5" />
-      <p className="text-sm text-amber-800 flex-1">{message}</p>
-      {onDismiss && (
-        <button onClick={onDismiss} className="text-amber-400 hover:text-amber-600">
-          <X size={13} />
-        </button>
-      )}
-    </div>
-  );
-}
-
-// ─── Question Card ────────────────────────────────────────────────────────────
-
-function QuestionCard({
-  question,
-  index,
-  total,
-  onChange,
-  onDelete,
-  onMoveUp,
-  onMoveDown,
-}: {
-  question: Question;
-  index: number;
-  total: number;
-  onChange: (q: Question) => void;
-  onDelete: () => void;
-  onMoveUp: () => void;
-  onMoveDown: () => void;
-}) {
-  const isQuiz = question.type === 'quiz';
-
-  return (
-    <div className="rounded-xl border border-gray-100 bg-white shadow-sm p-4 flex flex-col gap-3">
-      {/* Header row */}
-      <div className="flex items-start gap-2">
-        <span
-          className={cn(
-            'shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide mt-0.5',
-            isQuiz ? 'bg-blue-50 text-blue-600' : 'bg-purple-50 text-purple-600'
-          )}
-        >
-          {isQuiz ? 'Quiz' : 'Open'}
-        </span>
-        <span className="text-xs text-gray-400 mt-0.5 shrink-0">#{index + 1}</span>
-        <div className="flex-1" />
-        {/* Reorder */}
-        <button
-          onClick={onMoveUp}
-          disabled={index === 0}
-          className="p-1 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-          title="Переместить вверх"
-        >
-          <ChevronUp size={13} />
-        </button>
-        <button
-          onClick={onMoveDown}
-          disabled={index === total - 1}
-          className="p-1 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-          title="Переместить вниз"
-        >
-          <ChevronDown size={13} />
-        </button>
-        <button
-          onClick={onDelete}
-          className="p-1 rounded text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors ml-1"
-          title="Удалить вопрос"
-        >
-          <Trash2 size={13} />
-        </button>
+          {/* Tabs */}
+          <div className="flex border-b border-gray-100">
+            <button className="flex-1 py-3 text-sm font-medium border-b-2 border-[#85EB59] text-black">
+              Все вопросы
+            </button>
+            <button className="flex-1 py-3 text-sm font-medium text-gray-400 hover:text-gray-600">
+              Файлы
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50/50">
+            {questions.map((q, idx) => {
+              const isSelected = idx === selectedIdx;
+              return (
+                <div
+                  key={q.id}
+                  onClick={() => setSelectedIdx(idx)}
+                  className={cn(
+                    'p-4 rounded-xl border bg-white cursor-pointer transition-all relative',
+                    isSelected
+                      ? 'border-[#85EB59] shadow-sm ring-1 ring-[#85EB59]/20'
+                      : 'border-gray-200 hover:border-gray-300 hover:shadow-sm'
+                  )}
+                >
+                  {isSelected && (
+                    <div className="absolute -left-1 top-1/2 -translate-y-1/2 w-1 h-8 bg-[#85EB59] rounded-r" />
+                  )}
+                  <div className="flex items-center justify-between mb-2">
+                    <span
+                      className={cn(
+                        'text-[9px] font-bold px-1.5 py-0.5 rounded uppercase',
+                        q.type === 'quiz' ? 'bg-[#FFBA49] text-black' : 'bg-gray-100 text-gray-500'
+                      )}
+                    >
+                      {q.type === 'quiz' ? 'Квиз' : 'Открытый'}
+                    </span>
+                  </div>
+                  <p className="text-xs font-semibold text-gray-900 line-clamp-2 leading-relaxed">
+                    {q.prompt || 'Без текста'}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+          <div className="p-4 border-t border-gray-100 bg-white">
+            <button
+              onClick={() => {
+                addQuestion('quiz');
+                setSelectedIdx(questions.length);
+              }}
+              className="w-full py-2.5 border border-dashed border-gray-300 rounded-lg text-xs font-medium text-gray-500 hover:border-[#85EB59] hover:text-[#85EB59] hover:bg-[#85EB59]/5 transition-all flex items-center justify-center gap-2"
+            >
+              <Plus size={14} />
+              Добавить вопрос
+            </button>
+          </div>
+        </aside>
       </div>
-
-      {/* Prompt */}
-      <textarea
-        value={question.prompt}
-        onChange={(e) => onChange({ ...question, prompt: e.target.value })}
-        placeholder="Текст вопроса..."
-        rows={2}
-        className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-lime/50 focus:border-lime transition resize-none"
-      />
-
-      {/* Quiz options */}
-      {isQuiz && (
-        <div className="flex flex-col gap-1.5">
-          {(question.quizOptions ?? ['', '', '', '']).map((opt, i) => (
-            <label key={i} className="flex items-center gap-2">
-              <input
-                type="radio"
-                name={`correct-${question.id}`}
-                checked={question.correctIndex === i}
-                onChange={() => onChange({ ...question, correctIndex: i as 0 | 1 | 2 | 3 })}
-                className="accent-lime shrink-0"
-              />
-              <input
-                type="text"
-                value={opt}
-                onChange={(e) => {
-                  const opts = [...(question.quizOptions ?? ['', '', '', ''])] as [string, string, string, string];
-                  opts[i] = e.target.value;
-                  onChange({ ...question, quizOptions: opts });
-                }}
-                placeholder={`Вариант ${i + 1}${question.correctIndex === i ? ' (правильный)' : ''}`}
-                className={cn(
-                  'flex-1 rounded-lg border px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-lime/50 focus:border-lime transition',
-                  question.correctIndex === i
-                    ? 'border-lime/60 bg-lime/5 text-gray-900'
-                    : 'border-gray-200 bg-gray-50 text-gray-700'
-                )}
-              />
-            </label>
-          ))}
-          <p className="text-[11px] text-gray-400 mt-0.5">Выберите радио-кнопку у правильного варианта</p>
-        </div>
-      )}
-
-      {/* Open answer */}
-      {!isQuiz && (
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-gray-500">Ожидаемый ответ / критерии</label>
-          <textarea
-            value={question.expectedAnswer ?? ''}
-            onChange={(e) => onChange({ ...question, expectedAnswer: e.target.value })}
-            placeholder="Образец ответа или критерии оценки..."
-            rows={3}
-            className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-lime/50 focus:border-lime transition resize-none"
-          />
-        </div>
-      )}
-    </div>
+    </>
   );
 }
 
@@ -287,12 +1012,10 @@ function QuestionCard({
 export function CreateCourseWizard({ open, onClose, onSuccess }: Props) {
   const router = useRouter();
 
-  // Wizard state
-  const [wizardStep, setWizardStep] = useState<WizardStep>(1);
-  const [phase, setPhase] = useState<Phase>('idle');
+  const [phase, setPhase] = useState<Phase>('form');
   const [error, setError] = useState('');
 
-  // Step 1 state
+  // Form state
   const [title, setTitle] = useState('');
   const [courseSize, setCourseSize] = useState<CourseSize>('medium');
   const [files, setFiles] = useState<FileEntry[]>([]);
@@ -300,59 +1023,56 @@ export function CreateCourseWizard({ open, onClose, onSuccess }: Props) {
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Step 2 state
+  // Loading step (0-3)
+  const [loadingStep, setLoadingStep] = useState(0);
+
+  // Editing state
   const [draft, setDraft] = useState<DraftPayload | null>(null);
   const [questions, setQuestions] = useState<Question[]>([]);
-
-  const isStep1Valid =
-    title.trim().length > 0 &&
-    files.length > 0 &&
-    files.some((f) => f.status !== 'error');
+  const [selectedIdx, setSelectedIdx] = useState(0);
 
   // Reset when closed
   useEffect(() => {
     if (!open) {
-      setWizardStep(1);
-      setPhase('idle');
+      setPhase('form');
       setError('');
       setTitle('');
       setCourseSize('medium');
       setFiles([]);
       setValidationErrors({});
+      setLoadingStep(0);
       setDraft(null);
       setQuestions([]);
+      setSelectedIdx(0);
     }
   }, [open]);
 
-  // ── File handling ───────────────────────────────────────────────────────────
+  // ── File handling ──────────────────────────────────────────────────────────
 
-  const addFiles = useCallback((incoming: File[]) => {
-    const newErrors: Record<string, string> = {};
-    const newEntries: FileEntry[] = [];
-    for (const file of incoming) {
-      const err = validateFile(file);
-      if (err) { newErrors[file.name] = err; continue; }
-      const dup = files.some((f) => f.file.name === file.name && f.file.size === file.size);
-      if (dup) continue;
-      newEntries.push({ id: crypto.randomUUID(), file, status: 'pending' });
-    }
-    setValidationErrors((prev) => ({ ...prev, ...newErrors }));
-    if (newEntries.length > 0) setFiles((prev) => [...prev, ...newEntries]);
-  }, [files]);
+  const addFiles = useCallback(
+    (incoming: File[]) => {
+      const newErrors: Record<string, string> = {};
+      const newEntries: FileEntry[] = [];
+      for (const file of incoming) {
+        const err = validateFile(file);
+        if (err) { newErrors[file.name] = err; continue; }
+        const dup = files.some((f) => f.file.name === file.name && f.file.size === file.size);
+        if (dup) continue;
+        newEntries.push({ id: crypto.randomUUID(), file, status: 'pending' });
+      }
+      setValidationErrors((prev) => ({ ...prev, ...newErrors }));
+      if (newEntries.length > 0) setFiles((prev) => [...prev, ...newEntries]);
+    },
+    [files]
+  );
 
   const removeFile = (id: string) => setFiles((prev) => prev.filter((f) => f.id !== id));
 
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-    addFiles(Array.from(e.dataTransfer.files));
-  };
+  // ── Submit flow ────────────────────────────────────────────────────────────
 
-  // ── Step 1: Submit (upload + parse via backend) ─────────────────────────────
-
-  const handleStep1Submit = async () => {
-    if (!isStep1Valid || phase !== 'idle') return;
-    setPhase('uploading');
+  const handleSubmit = async () => {
+    setPhase('loading');
+    setLoadingStep(0);
     setError('');
 
     const formData = new FormData();
@@ -362,47 +1082,33 @@ export function CreateCourseWizard({ open, onClose, onSuccess }: Props) {
       formData.append('files', entry.file, entry.file.name);
     }
 
-    // Mark all files as uploading
-    setFiles((prev) => prev.map((f) => ({ ...f, status: 'uploading' as const })));
-
+    let payload: DraftPayload;
     try {
       const res = await apiFetch('/api/courses/draft', {
         method: 'POST',
         body: formData,
-        // Do NOT set Content-Type — browser sets multipart boundary automatically
         headers: {},
       });
       const data = await res.json();
-
       if (!res.ok || !data.ok) {
         throw new Error(data.detail ?? data.message ?? 'Ошибка при загрузке файлов');
       }
-
-      // Mark files as done
-      setFiles((prev) => prev.map((f) => ({ ...f, status: 'done' as const })));
-
-      const payload = data as DraftPayload & { ok: boolean };
+      payload = data as DraftPayload & { ok: boolean };
       setDraft(payload);
-      setWizardStep(2);
-      setPhase('generating');
-
-      // Auto-trigger generation
-      await handleGenerate(payload);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg);
-      setPhase('idle');
-      setFiles((prev) => prev.map((f) =>
-        f.status === 'uploading' ? { ...f, status: 'error' as const, error: 'Загрузка прервана' } : f
-      ));
+      setPhase('form');
+      return;
     }
-  };
 
-  // ── Step 2: Generate questions ──────────────────────────────────────────────
+    // Step 0 done → step 1 active
+    setLoadingStep(1);
+    await new Promise((r) => setTimeout(r, 800));
 
-  const handleGenerate = async (payload: DraftPayload) => {
-    setPhase('generating');
-    setError('');
+    // Step 1 done → step 2 active
+    setLoadingStep(2);
+
     try {
       const res = await apiFetch('/api/training/generate', {
         method: 'POST',
@@ -417,24 +1123,30 @@ export function CreateCourseWizard({ open, onClose, onSuccess }: Props) {
       if (!res.ok || !data.ok) {
         throw new Error(data.detail ?? data.message ?? 'Ошибка генерации вопросов');
       }
+
+      // Step 2 done → step 3 active
+      setLoadingStep(3);
+      await new Promise((r) => setTimeout(r, 500));
+
       setQuestions(data.questions as Question[]);
+      setSelectedIdx(0);
       setPhase('editing');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg);
-      setPhase('editing'); // still show editor, but empty
+      setQuestions([]);
+      setSelectedIdx(0);
+      setPhase('editing');
     }
   };
 
-  // ── Question editing helpers ────────────────────────────────────────────────
+  // ── Question editing helpers ───────────────────────────────────────────────
 
-  const updateQuestion = (idx: number, q: Question) => {
+  const updateQuestion = (idx: number, q: Question) =>
     setQuestions((prev) => prev.map((old, i) => (i === idx ? q : old)));
-  };
 
-  const deleteQuestion = (idx: number) => {
+  const deleteQuestion = (idx: number) =>
     setQuestions((prev) => prev.filter((_, i) => i !== idx));
-  };
 
   const moveUp = (idx: number) => {
     if (idx === 0) return;
@@ -443,6 +1155,7 @@ export function CreateCourseWizard({ open, onClose, onSuccess }: Props) {
       [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
       return next;
     });
+    setSelectedIdx(idx - 1);
   };
 
   const moveDown = (idx: number) => {
@@ -452,20 +1165,16 @@ export function CreateCourseWizard({ open, onClose, onSuccess }: Props) {
       [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
       return next;
     });
+    setSelectedIdx(idx + 1);
   };
 
-  const addQuestion = (type: QuestionType) => {
+  const addQuestion = (type: QuestionType) =>
     setQuestions((prev) => [...prev, newQuestion(type)]);
-  };
 
-  // ── Step 2: Finalize ────────────────────────────────────────────────────────
+  // ── Finalize ───────────────────────────────────────────────────────────────
 
-  const handleFinalize = async () => {
-    if (!draft || phase !== 'editing') return;
-    if (questions.length === 0) {
-      setError('Добавьте хотя бы один вопрос перед созданием курса');
-      return;
-    }
+  const handleSave = async () => {
+    if (!draft || questions.length === 0) return;
     setPhase('saving');
     setError('');
     try {
@@ -483,8 +1192,6 @@ export function CreateCourseWizard({ open, onClose, onSuccess }: Props) {
       if (!res.ok || !data.ok) {
         throw new Error(data.detail ?? data.message ?? 'Ошибка сохранения курса');
       }
-      setPhase('done');
-      // Fetch final manifest and notify parent
       const manifestRes = await apiFetch(`/api/courses/${data.courseId}`);
       const manifestData = await manifestRes.json();
       const manifest = manifestData.manifest as CourseManifest;
@@ -498,354 +1205,56 @@ export function CreateCourseWizard({ open, onClose, onSuccess }: Props) {
     }
   };
 
-  // ── Retry generation ────────────────────────────────────────────────────────
-
-  const handleRetryGenerate = () => {
-    if (draft) handleGenerate(draft);
-  };
-
   if (!open) return null;
-
-  const isRunning = phase === 'uploading' || phase === 'generating' || phase === 'saving';
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-white overflow-hidden">
-      {/* ── Top bar ── */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 shrink-0">
-        {/* Logo */}
-        <div className="flex items-center gap-2 shrink-0">
-          <div className="w-7 h-7 rounded-md bg-lime/15 flex items-center justify-center">
-            <span className="font-bold text-sm text-[#0F0F14]">A</span>
-          </div>
-          <span className="font-semibold text-sm text-gray-900 hidden sm:block">Adapt</span>
-        </div>
+      {phase === 'form' && (
+        <FormPhase
+          title={title}
+          setTitle={setTitle}
+          courseSize={courseSize}
+          setCourseSize={setCourseSize}
+          files={files}
+          isDragging={isDragging}
+          setIsDragging={setIsDragging}
+          fileInputRef={fileInputRef as React.RefObject<HTMLInputElement>}
+          addFiles={addFiles}
+          removeFile={removeFile}
+          validationErrors={validationErrors}
+          error={error}
+          onSubmit={handleSubmit}
+          isSubmitting={false}
+          onClose={onClose}
+        />
+      )}
 
-        {/* Progress bar */}
-        <ProgressBar step={wizardStep} />
+      {phase === 'loading' && (
+        <LoadingPhase
+          loadingStep={loadingStep}
+          onCancel={() => {
+            setPhase('form');
+            setLoadingStep(0);
+          }}
+        />
+      )}
 
-        {/* Close */}
-        <button
-          onClick={onClose}
-          disabled={isRunning}
-          className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors disabled:opacity-40"
-          title="Закрыть"
-        >
-          <X size={18} />
-        </button>
-      </div>
-
-      {/* ── Content ── */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Left decorative panel (desktop only) */}
-        <div className="hidden lg:flex w-72 xl:w-80 shrink-0 flex-col justify-between p-8 bg-gradient-to-b from-[#0F0F14] to-[#1a1a24] text-white">
-          <div>
-            <h2 className="text-xl font-bold mb-2 leading-tight">
-              {wizardStep === 1 ? 'Загрузите материалы' : 'Ваш тренинг готов'}
-            </h2>
-            <p className="text-sm text-gray-400 leading-relaxed">
-              {wizardStep === 1
-                ? 'Добавьте PDF, DOCX или TXT файлы. Мы извлечём текст и создадим вопросы с помощью AI.'
-                : 'Отредактируйте вопросы, измените порядок и добавьте свои. Затем нажмите «Создать курс».'}
-            </p>
-          </div>
-          <div className="space-y-3">
-            {[
-              { step: 1, label: 'Файлы и параметры' },
-              { step: 2, label: 'Тренинг и вопросы' },
-            ].map(({ step, label }) => (
-              <div key={step} className="flex items-center gap-3">
-                <div
-                  className={cn(
-                    'w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-semibold',
-                    wizardStep > step ? 'bg-lime text-[#0F0F14]' :
-                    wizardStep === step ? 'bg-white text-[#0F0F14]' :
-                    'bg-white/10 text-gray-500'
-                  )}
-                >
-                  {wizardStep > step ? '✓' : step}
-                </div>
-                <span className={cn('text-sm', wizardStep >= step ? 'text-white' : 'text-gray-500')}>
-                  {label}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Main content */}
-        <div className="flex-1 overflow-y-auto">
-          {/* ══ STEP 1 ══════════════════════════════════════════════════════════ */}
-          {wizardStep === 1 && (
-            <div className="max-w-xl mx-auto px-6 py-8 flex flex-col gap-6">
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">Новый курс</h1>
-                <p className="text-sm text-gray-500 mt-1">
-                  Заполните параметры и загрузите файлы — мы сделаем остальное.
-                </p>
-              </div>
-
-              {/* Error */}
-              {error && <ErrorBanner message={error} onDismiss={() => setError('')} />}
-
-              {/* Title */}
-              <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-gray-700">
-                  Название курса <span className="text-red-400">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="Например: Онбординг нового сотрудника"
-                  disabled={phase === 'uploading'}
-                  className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-lime/50 focus:border-lime transition disabled:opacity-50"
-                />
-              </div>
-
-              {/* Size */}
-              <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-gray-700">Размер курса</label>
-                <Select
-                  value={courseSize}
-                  onValueChange={(v) => setCourseSize(v as CourseSize)}
-                  disabled={phase === 'uploading'}
-                >
-                  <SelectTrigger className="rounded-xl border-gray-200 bg-gray-50 text-sm h-10">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="rounded-xl">
-                    {SIZE_OPTIONS.map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value} className="rounded-lg">
-                        <span className="font-medium">{opt.label}</span>
-                        <span className="ml-2 text-gray-400 text-xs">{opt.description}</span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Dropzone */}
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium text-gray-700">
-                  Файлы <span className="text-red-400">*</span>
-                  <span className="ml-2 text-xs text-gray-400 font-normal">
-                    PDF, TXT, DOC, DOCX · до {formatFileSize(MAX_FILE_SIZE)}
-                  </span>
-                </label>
-                <div
-                  className={cn(
-                    'relative flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-6 py-10 cursor-pointer transition-colors',
-                    isDragging
-                      ? 'border-lime bg-lime/5'
-                      : 'border-gray-200 bg-gray-50 hover:border-gray-300',
-                    phase === 'uploading' && 'pointer-events-none opacity-60'
-                  )}
-                  onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-                  onDragLeave={() => setIsDragging(false)}
-                  onDrop={handleDrop}
-                  onClick={() => phase !== 'uploading' && fileInputRef.current?.click()}
-                >
-                  <CloudUpload size={30} className={isDragging ? 'text-lime' : 'text-gray-300'} />
-                  <p className="text-sm text-gray-500 text-center">
-                    <span className="font-medium text-gray-700">Нажмите для выбора</span> или перетащите файлы
-                  </p>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    multiple
-                    accept=".pdf,.txt,.doc,.docx"
-                    className="hidden"
-                    onChange={(e) => {
-                      if (e.target.files) { addFiles(Array.from(e.target.files)); e.target.value = ''; }
-                    }}
-                  />
-                </div>
-
-                {/* Validation errors */}
-                {Object.entries(validationErrors).map(([name, err]) => (
-                  <p key={name} className="text-xs text-red-500 flex items-center gap-1">
-                    <AlertCircle size={11} /><span><b>{name}:</b> {err}</span>
-                  </p>
-                ))}
-
-                {/* File list */}
-                {files.length > 0 && (
-                  <div className="flex flex-col gap-1.5 mt-1">
-                    {files.map((entry) => (
-                      <div
-                        key={entry.id}
-                        className={cn(
-                          'flex items-center gap-3 rounded-xl border px-3 py-2 text-sm',
-                          entry.status === 'error' ? 'border-red-200 bg-red-50' :
-                          entry.status === 'done'  ? 'border-emerald-100 bg-emerald-50/50' :
-                          'border-gray-100 bg-white'
-                        )}
-                      >
-                        <span className="shrink-0">{fileIcon(entry.file.name)}</span>
-                        <div className="flex-1 min-w-0">
-                          <p className="truncate font-medium text-gray-800 text-xs">{entry.file.name}</p>
-                          <p className="text-gray-400 text-xs">{formatFileSize(entry.file.size)}</p>
-                          {entry.status === 'error' && entry.error && (
-                            <p className="text-red-500 text-xs mt-0.5">{entry.error}</p>
-                          )}
-                        </div>
-                        <div className="shrink-0">
-                          {entry.status === 'uploading' && <Loader2 size={13} className="animate-spin text-blue-400" />}
-                          {entry.status === 'done' && <CheckCircle2 size={13} className="text-emerald-500" />}
-                          {entry.status === 'error' && <AlertCircle size={13} className="text-red-400" />}
-                        </div>
-                        {phase !== 'uploading' && (
-                          <button
-                            onClick={() => removeFile(entry.id)}
-                            className="shrink-0 rounded-md p-0.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
-                          >
-                            <X size={13} />
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* CTA */}
-              <button
-                onClick={handleStep1Submit}
-                disabled={!isStep1Valid || phase === 'uploading'}
-                className={cn(
-                  'flex items-center justify-center gap-2 w-full py-3 rounded-xl text-sm font-semibold transition-all',
-                  isStep1Valid && phase === 'idle'
-                    ? 'bg-lime text-[#0F0F14] hover:brightness-95 shadow-sm'
-                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                )}
-              >
-                {phase === 'uploading' && <Loader2 size={15} className="animate-spin" />}
-                {phase === 'uploading' ? 'Загружаем файлы...' : 'Продолжить →'}
-              </button>
-            </div>
-          )}
-
-          {/* ══ STEP 2 ══════════════════════════════════════════════════════════ */}
-          {wizardStep === 2 && (
-            <div className="max-w-2xl mx-auto px-6 py-8 flex flex-col gap-6">
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">Тренинг и вопросы</h1>
-                <p className="text-sm text-gray-500 mt-1">
-                  {phase === 'generating'
-                    ? 'Генерируем вопросы с помощью Yandex AI Studio...'
-                    : `${questions.length} вопрос${questions.length === 1 ? '' : questions.length < 5 ? 'а' : 'ов'}. Отредактируйте и создайте курс.`
-                  }
-                </p>
-              </div>
-
-              {/* Error */}
-              {error && (
-                <ErrorBanner
-                  message={error}
-                  onDismiss={() => setError('')}
-                />
-              )}
-
-              {/* Generating loader */}
-              {phase === 'generating' && (
-                <div className="flex flex-col items-center justify-center gap-4 py-16 text-center">
-                  <div className="relative">
-                    <div className="w-16 h-16 rounded-full bg-lime/10 flex items-center justify-center">
-                      <Loader2 size={28} className="animate-spin text-[#0F0F14]" />
-                    </div>
-                  </div>
-                  <div>
-                    <p className="font-semibold text-gray-900 text-lg">Создаём тренинг…</p>
-                    <p className="text-sm text-gray-500 mt-1">
-                      Yandex AI Studio анализирует материал и генерирует вопросы
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {/* Question editor */}
-              {(phase === 'editing' || phase === 'saving') && (
-                <>
-                  {/* Retry button if no questions generated */}
-                  {questions.length === 0 && !error && (
-                    <div className="flex flex-col items-center gap-3 py-8 text-center">
-                      <p className="text-gray-500 text-sm">Вопросы не были сгенерированы.</p>
-                      <button
-                        onClick={handleRetryGenerate}
-                        className="px-4 py-2 rounded-xl bg-[#0F0F14] text-white text-sm font-medium hover:opacity-90 transition"
-                      >
-                        Попробовать ещё раз
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Questions list */}
-                  {questions.length > 0 && (
-                    <div className="flex flex-col gap-3">
-                      {questions.map((q, idx) => (
-                        <QuestionCard
-                          key={q.id}
-                          question={q}
-                          index={idx}
-                          total={questions.length}
-                          onChange={(updated) => updateQuestion(idx, updated)}
-                          onDelete={() => deleteQuestion(idx)}
-                          onMoveUp={() => moveUp(idx)}
-                          onMoveDown={() => moveDown(idx)}
-                        />
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Add question buttons */}
-                  <div className="flex gap-2 flex-wrap">
-                    <button
-                      onClick={() => addQuestion('quiz')}
-                      disabled={phase === 'saving'}
-                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition disabled:opacity-50"
-                    >
-                      <Plus size={13} />
-                      Добавить Quiz
-                    </button>
-                    <button
-                      onClick={() => addQuestion('open')}
-                      disabled={phase === 'saving'}
-                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition disabled:opacity-50"
-                    >
-                      <Plus size={13} />
-                      Добавить Open
-                    </button>
-                  </div>
-
-                  {/* Finalize CTA */}
-                  <div className="flex items-center gap-3 pt-2 pb-4">
-                    <button
-                      onClick={() => { setWizardStep(1); setPhase('idle'); setError(''); }}
-                      disabled={phase === 'saving'}
-                      className="px-4 py-2.5 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-100 transition disabled:opacity-50"
-                    >
-                      ← Назад
-                    </button>
-                    <button
-                      onClick={handleFinalize}
-                      disabled={questions.length === 0 || phase === 'saving'}
-                      className={cn(
-                        'flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-all',
-                        questions.length > 0 && phase !== 'saving'
-                          ? 'bg-lime text-[#0F0F14] hover:brightness-95 shadow-sm'
-                          : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                      )}
-                    >
-                      {phase === 'saving' && <Loader2 size={14} className="animate-spin" />}
-                      {phase === 'saving' ? 'Сохраняем курс...' : 'Создать курс'}
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
+      {(phase === 'editing' || phase === 'saving') && (
+        <EditingPhase
+          title={title}
+          questions={questions}
+          selectedIdx={selectedIdx}
+          setSelectedIdx={setSelectedIdx}
+          updateQuestion={updateQuestion}
+          deleteQuestion={deleteQuestion}
+          moveUp={moveUp}
+          moveDown={moveDown}
+          addQuestion={addQuestion}
+          onSave={handleSave}
+          isSaving={phase === 'saving'}
+          error={error}
+        />
+      )}
     </div>
   );
 }
