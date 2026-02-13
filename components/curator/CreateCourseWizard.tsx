@@ -14,7 +14,7 @@ import {
   ChevronUp, ChevronDown, Check, Loader2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, safeJson } from '@/lib/api';
 import {
   CourseManifest, CourseSize, Question, QuestionType,
   DraftPayload,
@@ -22,7 +22,10 @@ import {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const MAX_FILE_SIZE = 30 * 1024 * 1024;
+// Vercel serverless functions cap request bodies at ~4.5 MB.
+// Keep each file under 4 MB and total payload under 4 MB to avoid 413 errors.
+const MAX_FILE_SIZE   = 4 * 1024 * 1024;  // 4 MB per file
+const MAX_TOTAL_SIZE  = 4 * 1024 * 1024;  // 4 MB total across all files
 const ALLOWED_EXTENSIONS = ['.pdf', '.txt', '.doc', '.docx'];
 
 const SIZE_OPTIONS: { value: CourseSize; label: string; duration: string }[] = [
@@ -1075,6 +1078,17 @@ export function CreateCourseWizard({ open, onClose, onSuccess }: Props) {
     setLoadingStep(0);
     setError('');
 
+    // Guard: total payload size (Vercel serverless limit ≈ 4.5 MB)
+    const totalSize = files.reduce((sum, e) => sum + e.file.size, 0);
+    if (totalSize > MAX_TOTAL_SIZE) {
+      setError(
+        `Суммарный размер файлов (${formatFileSize(totalSize)}) превышает лимит ${formatFileSize(MAX_TOTAL_SIZE)}. ` +
+        'Пожалуйста, уменьшите количество или размер файлов.'
+      );
+      setPhase('form');
+      return;
+    }
+
     const formData = new FormData();
     formData.append('title', title.trim());
     formData.append('size', courseSize);
@@ -1089,11 +1103,11 @@ export function CreateCourseWizard({ open, onClose, onSuccess }: Props) {
         body: formData,
         headers: {},
       });
-      const data = await res.json();
-      if (!res.ok || !data.ok) {
-        throw new Error(data.detail ?? data.message ?? 'Ошибка при загрузке файлов');
+      const data = await safeJson<DraftPayload & { ok: boolean }>(res);
+      if (!data.ok) {
+        throw new Error('Ошибка при загрузке файлов');
       }
-      payload = data as DraftPayload & { ok: boolean };
+      payload = data;
       setDraft(payload);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -1119,16 +1133,16 @@ export function CreateCourseWizard({ open, onClose, onSuccess }: Props) {
           extractedText: payload.extractedText,
         }),
       });
-      const data = await res.json();
-      if (!res.ok || !data.ok) {
-        throw new Error(data.detail ?? data.message ?? 'Ошибка генерации вопросов');
+      const data = await safeJson<{ ok: boolean; questions: Question[] }>(res);
+      if (!data.ok) {
+        throw new Error('Ошибка генерации вопросов');
       }
 
       // Step 2 done → step 3 active
       setLoadingStep(3);
       await new Promise((r) => setTimeout(r, 500));
 
-      setQuestions(data.questions as Question[]);
+      setQuestions(data.questions);
       setSelectedIdx(0);
       setPhase('editing');
     } catch (err: unknown) {
@@ -1188,13 +1202,13 @@ export function CreateCourseWizard({ open, onClose, onSuccess }: Props) {
           questions,
         }),
       });
-      const data = await res.json();
-      if (!res.ok || !data.ok) {
-        throw new Error(data.detail ?? data.message ?? 'Ошибка сохранения курса');
+      const data = await safeJson<{ ok: boolean; courseId: string; courseCode: string }>(res);
+      if (!data.ok) {
+        throw new Error('Ошибка сохранения курса');
       }
       const manifestRes = await apiFetch(`/api/courses/${data.courseId}`);
-      const manifestData = await manifestRes.json();
-      const manifest = manifestData.manifest as CourseManifest;
+      const manifestData = await safeJson<{ manifest: CourseManifest }>(manifestRes);
+      const manifest = manifestData.manifest;
       onSuccess(manifest);
       onClose();
       router.push(`/curator/courses/${data.courseId}`);
