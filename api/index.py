@@ -1042,6 +1042,8 @@ class _Question(BaseModel):
     quizOptions: Optional[List[str]] = None   # exactly 4 for quiz
     correctIndex: Optional[int] = None         # 0-3 for quiz
     expectedAnswer: Optional[str] = None       # for open
+    explanation: Optional[str] = None          # mcq explanation
+    tag: Optional[str] = None                  # topic tag
 
 
 class _DraftUploadedFile(BaseModel):
@@ -1312,7 +1314,7 @@ async def generate_training(
     yandex_ms = int((time.monotonic() - t_start) * 1000)
     log.info(f"[{request_id}] Yandex response received yandex_ms={yandex_ms} raw_len={len(raw)}")
 
-    # Try to extract JSON array from response
+    # Try to extract JSON from response — handles both array and batch-object formats
     def _extract_json(text: str) -> Optional[list]:
         text = text.strip()
         # Strip markdown code fences if present
@@ -1323,17 +1325,59 @@ async def generate_training(
             text = text[:-3]
         text = text.strip()
         try:
-            return json.loads(text)
+            data = json.loads(text)
         except json.JSONDecodeError:
-            # Try to find array boundaries
-            start = text.find("[")
-            end = text.rfind("]")
-            if start != -1 and end != -1 and end > start:
-                try:
-                    return json.loads(text[start:end + 1])
-                except Exception:
-                    pass
+            # Try to find object/array boundaries
+            for start_char, end_char in (("[", "]"), ("{", "}")):
+                start = text.find(start_char)
+                end = text.rfind(end_char)
+                if start != -1 and end != -1 and end > start:
+                    try:
+                        data = json.loads(text[start:end + 1])
+                        break
+                    except Exception:
+                        pass
+            else:
+                return None
+        # Unwrap batch-object format: {"batch": {"steps": [...]}}
+        if isinstance(data, dict):
+            batch = data.get("batch", data)
+            if isinstance(batch, dict):
+                steps = batch.get("steps")
+                if isinstance(steps, list):
+                    return steps
+            return None
+        if isinstance(data, list):
+            return data
         return None
+
+    def _normalize_step(step: dict, idx: int) -> Optional[dict]:
+        """Convert Yandex batch step format to _Question-compatible dict."""
+        step_type = step.get("type", "")
+        item: dict = {
+            "id": str(uuid.uuid4()),
+            "tag": step.get("tag", ""),
+        }
+        if step_type == "mcq":
+            item["type"] = "quiz"
+            item["prompt"] = step.get("question", "")
+            item["quizOptions"] = step.get("options", [])
+            item["correctIndex"] = step.get("correct_index", 0)
+            item["expectedAnswer"] = step.get("explanation", "")
+        elif step_type == "open":
+            item["type"] = "open"
+            item["prompt"] = step.get("prompt", "")
+            rubric = step.get("rubric", [])
+            item["expectedAnswer"] = step.get("sample_good_answer") or (
+                "; ".join(rubric) if rubric else ""
+            )
+        elif step_type == "roleplay":
+            item["type"] = "open"
+            item["prompt"] = step.get("scenario", step.get("task", ""))
+            item["expectedAnswer"] = step.get("ideal_answer", "")
+        else:
+            return None
+        return item
 
     parsed = _extract_json(raw)
 
@@ -1345,6 +1389,12 @@ async def generate_training(
             parsed = _extract_json(raw)
         except Exception as e:
             log.error(f"[{request_id}] Retry failed: {e}")
+
+    # Normalize steps if they use Yandex batch format (have "type" like mcq/open/roleplay)
+    if isinstance(parsed, list) and parsed and isinstance(parsed[0], dict):
+        first_type = parsed[0].get("type", "")
+        if first_type in ("mcq", "open", "roleplay"):
+            parsed = [n for i, s in enumerate(parsed) if (n := _normalize_step(s, i)) is not None]
 
     if parsed is None or not isinstance(parsed, list):
         log.error(f"[{request_id}] Could not parse Yandex response as JSON array. raw={raw[:500]}")
