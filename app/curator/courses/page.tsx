@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useMemo, Suspense, useRef } from 'rea
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Plus, BookOpen, Search, X } from 'lucide-react';
 import { CourseCard } from '@/components/curator/CourseCard';
-import { CreateCourseDialog } from '@/components/curator/CreateCourseDialog';
+import { CreateCourseWizard } from '@/components/curator/CreateCourseWizard';
 import { CourseManifest } from '@/lib/types';
 import { createClient } from '@/lib/supabase/client';
 import { apiFetch } from '@/lib/api';
@@ -305,14 +305,11 @@ function CoursesPageInner() {
         )}
       </div>
 
-      {userId && (
-        <CreateCourseDialog
-          open={dialogOpen}
-          onClose={() => setDialogOpen(false)}
-          onSuccess={handleSuccess}
-          userId={userId}
-        />
-      )}
+      <CreateCourseWizard
+        open={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+        onSuccess={handleSuccess}
+      />
     </>
   );
 }

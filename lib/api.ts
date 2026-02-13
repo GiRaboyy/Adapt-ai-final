@@ -16,7 +16,8 @@ export async function apiFetch(path: string, options: RequestInit = {}): Promise
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  if (options.body && !headers['Content-Type']) {
+  // Only set JSON content-type for non-FormData bodies (FormData sets its own boundary)
+  if (options.body && !(options.body instanceof FormData) && !headers['Content-Type']) {
     headers['Content-Type'] = 'application/json';
   }
 

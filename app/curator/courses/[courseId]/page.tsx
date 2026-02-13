@@ -17,7 +17,7 @@ import {
   CheckCircle2,
   Calendar,
 } from 'lucide-react';
-import { CourseManifest, CourseManifestFile } from '@/lib/types';
+import { CourseManifest, CourseManifestFile, Question } from '@/lib/types';
 import { apiFetch } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -224,7 +224,7 @@ export default function CourseDetailPage() {
       </div>
 
       {/* Tab content */}
-      {activeTab === 'training'  && <TrainingTab />}
+      {activeTab === 'training'  && <TrainingTab questions={manifest.questions} />}
       {activeTab === 'employees' && <EmployeesTab count={manifest.employeesCount ?? 0} />}
       {activeTab === 'analytics' && <AnalyticsTab />}
       {activeTab === 'materials' && (
@@ -264,14 +264,95 @@ function TabEmptyState({
 
 // ─── Tabs ─────────────────────────────────────────────────────────────────────
 
-function TrainingTab() {
+function TrainingTab({ questions }: { questions?: Question[] }) {
+  if (!questions || questions.length === 0) {
+    return (
+      <TabEmptyState
+        iconBg="bg-lime/10"
+        icon={<BookOpen size={22} className="text-lime" strokeWidth={1.5} />}
+        title="Вопросы не сгенерированы"
+        description="Вопросы тренинга появятся здесь после создания курса через новый мастер."
+      />
+    );
+  }
+
+  const quizCount = questions.filter((q) => q.type === 'quiz').length;
+  const openCount = questions.filter((q) => q.type === 'open').length;
+
   return (
-    <TabEmptyState
-      iconBg="bg-lime/10"
-      icon={<BookOpen size={22} className="text-lime" strokeWidth={1.5} />}
-      title="Модули тренинга"
-      description="Здесь будут модули и задания для прохождения курса. Функциональность в разработке."
-    />
+    <div className="flex flex-col gap-4">
+      {/* Stats */}
+      <div className="flex gap-3">
+        <div className="rounded-xl border border-gray-100 bg-white px-4 py-2.5 shadow-sm text-sm">
+          <span className="font-semibold text-gray-900">{questions.length}</span>
+          <span className="text-gray-500 ml-1">вопрос{questions.length === 1 ? '' : 'ов'}</span>
+        </div>
+        {quizCount > 0 && (
+          <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-2.5 text-sm">
+            <span className="font-semibold text-blue-700">{quizCount}</span>
+            <span className="text-blue-500 ml-1">quiz</span>
+          </div>
+        )}
+        {openCount > 0 && (
+          <div className="rounded-xl border border-purple-100 bg-purple-50 px-4 py-2.5 text-sm">
+            <span className="font-semibold text-purple-700">{openCount}</span>
+            <span className="text-purple-500 ml-1">open</span>
+          </div>
+        )}
+      </div>
+
+      {/* Questions */}
+      {questions.map((q, idx) => (
+        <div key={q.id} className="rounded-2xl border border-neutral-200/80 bg-white p-5 shadow-sm">
+          <div className="flex items-start gap-2 mb-3">
+            <span
+              className={cn(
+                'shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
+                q.type === 'quiz' ? 'bg-blue-50 text-blue-600' : 'bg-purple-50 text-purple-600'
+              )}
+            >
+              {q.type === 'quiz' ? 'Quiz' : 'Open'}
+            </span>
+            <span className="text-xs text-gray-400 mt-0.5">#{idx + 1}</span>
+          </div>
+          <p className="text-[14px] font-medium text-gray-900 mb-3 leading-relaxed">{q.prompt}</p>
+
+          {q.type === 'quiz' && q.quizOptions && (
+            <div className="flex flex-col gap-1.5">
+              {q.quizOptions.map((opt, i) => (
+                <div
+                  key={i}
+                  className={cn(
+                    'flex items-center gap-2 rounded-lg px-3 py-2 text-sm',
+                    q.correctIndex === i
+                      ? 'bg-lime/10 border border-lime/40 text-gray-900 font-medium'
+                      : 'bg-gray-50 border border-gray-100 text-gray-600'
+                  )}
+                >
+                  <span
+                    className={cn(
+                      'w-4 h-4 rounded-full border-2 flex-shrink-0',
+                      q.correctIndex === i ? 'border-lime bg-lime' : 'border-gray-300'
+                    )}
+                  />
+                  {opt}
+                  {q.correctIndex === i && (
+                    <CheckCircle2 size={13} className="ml-auto text-[#3d6000]" />
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {q.type === 'open' && q.expectedAnswer && (
+            <div className="rounded-lg bg-gray-50 border border-gray-100 px-3 py-2">
+              <p className="text-[11px] font-medium text-gray-400 mb-1">Ожидаемый ответ</p>
+              <p className="text-sm text-gray-700 leading-relaxed">{q.expectedAnswer}</p>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
   );
 }
 

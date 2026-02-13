@@ -1021,3 +1021,534 @@ async def download_course_file(
         "url": signed_url,
         "fileName": file_entry.get("name", file_id),
     }
+
+
+# =============================================================================
+# Training — new wizard endpoints
+# =============================================================================
+
+from enum import Enum as _Enum
+
+
+class _QuestionType(str, _Enum):
+    quiz = "quiz"
+    open = "open"
+
+
+class _Question(BaseModel):
+    id: str
+    type: _QuestionType
+    prompt: str
+    quizOptions: Optional[List[str]] = None   # exactly 4 for quiz
+    correctIndex: Optional[int] = None         # 0-3 for quiz
+    expectedAnswer: Optional[str] = None       # for open
+
+
+class _DraftUploadedFile(BaseModel):
+    path: str           # safe key, e.g. "uuid.pdf"
+    storagePath: str    # full bucket path
+    originalName: str
+    mime: str
+    size: int
+
+
+class _GenerateRequest(BaseModel):
+    draftCourseId: str
+    title: str
+    size: str          # "small" | "medium" | "large"
+    extractedText: str
+
+
+class _FinalizeRequest(BaseModel):
+    draftCourseId: str
+    title: str
+    size: str
+    uploadedFiles: List[_DraftUploadedFile]
+    questions: List[_Question]
+
+
+# ─── A) POST /api/courses/draft ──────────────────────────────────────────────
+
+@app.post("/api/courses/draft")
+async def create_course_draft(
+    title: str = Form(...),
+    size: str = Form(...),
+    files: List[UploadFile] = File(...),
+    user: dict = Depends(get_current_user),
+):
+    """
+    Receive multipart files, upload to Storage via service_role (no RLS issues),
+    parse text, save combined.txt, return draft payload.
+    """
+    import json
+    import time
+    import uuid
+    from datetime import datetime, timezone
+    from api._lib.supabase_admin import get_admin_client
+
+    log = get_logger(__name__)
+    request_id = str(uuid.uuid4())[:8]
+    user_id = user["id"]
+    draft_course_id = str(uuid.uuid4())
+
+    log.info(
+        f"[{request_id}] POST /api/courses/draft - userId={user_id} "
+        f"draftCourseId={draft_course_id} title={title!r} size={size}"
+    )
+
+    supabase = get_admin_client()
+    _ensure_courses_bucket(supabase)
+
+    uploaded_files = []
+    combined_parts = []
+    t_upload_start = time.monotonic()
+
+    for upload_file in files:
+        original_name = upload_file.filename or "file"
+        ext = ""
+        dot_pos = original_name.rfind(".")
+        if dot_pos >= 0:
+            ext = original_name[dot_pos:].lower()
+
+        safe_key = f"{uuid.uuid4()}{ext}"
+        storage_path = f"{user_id}/{draft_course_id}/files/{safe_key}"
+
+        # Guess MIME
+        mime_map = {
+            ".pdf": "application/pdf",
+            ".txt": "text/plain",
+            ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            ".doc": "application/msword",
+        }
+        content_type = upload_file.content_type or mime_map.get(ext, "application/octet-stream")
+        if content_type == "application/octet-stream" and ext in mime_map:
+            content_type = mime_map[ext]
+
+        file_bytes = await upload_file.read()
+        file_size = len(file_bytes)
+
+        # Upload raw file
+        try:
+            supabase.storage.from_(COURSES_BUCKET).upload(
+                storage_path,
+                file_bytes,
+                {"content-type": content_type, "upsert": "true"},
+            )
+        except Exception as e:
+            log.error(f"[{request_id}] Upload failed for {original_name}: {e}")
+            # Skip file but continue with others
+            continue
+
+        # Parse text
+        parsed_text: Optional[str] = None
+        try:
+            if ext == ".pdf":
+                parsed_text = _parse_pdf_bytes(file_bytes)
+            elif ext == ".txt":
+                parsed_text = _parse_txt_bytes(file_bytes)
+            elif ext == ".docx":
+                parsed_text = _parse_docx_bytes(file_bytes)
+        except Exception as e:
+            log.warning(f"[{request_id}] Parse error for {original_name}: {e}")
+
+        if parsed_text:
+            parsed_path = f"{user_id}/{draft_course_id}/parsed/{safe_key}.txt"
+            try:
+                supabase.storage.from_(COURSES_BUCKET).upload(
+                    parsed_path,
+                    parsed_text.encode("utf-8"),
+                    {"content-type": "text/plain; charset=utf-8", "upsert": "true"},
+                )
+            except Exception as e:
+                log.warning(f"[{request_id}] Could not save parsed text: {e}")
+            combined_parts.append(f"=== {original_name} ===\n{parsed_text}")
+
+        uploaded_files.append({
+            "path": safe_key,
+            "storagePath": storage_path,
+            "originalName": original_name,
+            "mime": content_type,
+            "size": file_size,
+        })
+
+    upload_ms = int((time.monotonic() - t_upload_start) * 1000)
+
+    if not uploaded_files:
+        raise HTTPException(status_code=400, detail="No files could be uploaded")
+
+    # Build combined text, truncate to 100k chars to stay within LLM limits
+    combined_text = "\n\n".join(combined_parts)
+    MAX_CHARS = 100_000
+    truncated = False
+    if len(combined_text) > MAX_CHARS:
+        combined_text = combined_text[:MAX_CHARS]
+        truncated = True
+
+    # Save combined.txt
+    if combined_parts:
+        combined_path = f"{user_id}/{draft_course_id}/parsed/combined.txt"
+        try:
+            supabase.storage.from_(COURSES_BUCKET).upload(
+                combined_path,
+                combined_text.encode("utf-8"),
+                {"content-type": "text/plain; charset=utf-8", "upsert": "true"},
+            )
+        except Exception as e:
+            log.warning(f"[{request_id}] Could not save combined.txt: {e}")
+
+    # Save draft_manifest.json
+    draft_manifest = {
+        "draftCourseId": draft_course_id,
+        "title": title,
+        "size": size,
+        "createdAt": datetime.now(timezone.utc).isoformat(),
+        "status": "draft",
+        "uploadedFiles": uploaded_files,
+    }
+    try:
+        supabase.storage.from_(COURSES_BUCKET).upload(
+            f"{user_id}/{draft_course_id}/draft_manifest.json",
+            json.dumps(draft_manifest, ensure_ascii=False).encode("utf-8"),
+            {"content-type": "application/json", "upsert": "true"},
+        )
+    except Exception as e:
+        log.warning(f"[{request_id}] Could not save draft_manifest: {e}")
+
+    log.info(
+        f"[{request_id}] Draft complete - draftCourseId={draft_course_id} "
+        f"files={len(uploaded_files)} chars={len(combined_text)} "
+        f"truncated={truncated} upload_ms={upload_ms}"
+    )
+
+    return {
+        "ok": True,
+        "draftCourseId": draft_course_id,
+        "uploadedFiles": uploaded_files,
+        "extractedText": combined_text,
+        "extractedStats": {
+            "chars": len(combined_text),
+            "filesCount": len(uploaded_files),
+            "truncated": truncated,
+        },
+    }
+
+
+# ─── B) POST /api/training/generate ─────────────────────────────────────────
+
+@app.post("/api/training/generate")
+async def generate_training(
+    body: _GenerateRequest,
+    user: dict = Depends(get_current_user),
+):
+    """
+    Call Yandex AI Studio to generate quiz/open questions from extracted text.
+    Returns validated List[Question].
+    """
+    import json
+    import time
+    import uuid
+
+    log = get_logger(__name__)
+    request_id = str(uuid.uuid4())[:8]
+    user_id = user["id"]
+
+    log.info(
+        f"[{request_id}] POST /api/training/generate - userId={user_id} "
+        f"draftCourseId={body.draftCourseId} size={body.size}"
+    )
+
+    if not settings.yandex_api_key or not settings.yandex_folder_id:
+        raise HTTPException(
+            status_code=503,
+            detail="Yandex AI Studio не настроен: задайте YANDEX_API_KEY и YANDEX_FOLDER_ID в env",
+        )
+
+    # Determine question count by size
+    size_map = {"small": (8, 12), "medium": (12, 18), "large": (18, 30)}
+    n_min, n_max = size_map.get(body.size, (12, 18))
+
+    # Build model identifier
+    if settings.yandex_model_uri:
+        model = f"gpt://{settings.yandex_folder_id}/{settings.yandex_model_uri}"
+    else:
+        model = f"gpt://{settings.yandex_folder_id}/yandexgpt"
+
+    system_prompt = f"""Ты — методолог корпоративного обучения.
+Тебе дан текст учебного материала и метаданные курса.
+Сгенерируй от {n_min} до {n_max} вопросов для тренинга (70% quiz, 30% open).
+
+СТРОГО верни ТОЛЬКО валидный JSON-массив без markdown-блоков, без пояснений, без текста до/после.
+Формат каждого элемента:
+- quiz: {{"id":"<uuid>","type":"quiz","prompt":"<вопрос>","quizOptions":["<вар1>","<вар2>","<вар3>","<вар4>"],"correctIndex":<0-3>}}
+- open: {{"id":"<uuid>","type":"open","prompt":"<вопрос>","expectedAnswer":"<образец ответа 2-4 предложения>"}}
+
+Требования:
+- Quiz: ровно 4 варианта, один правильный. Варианты похожи, ответ не должен быть очевидным.
+- Open: ожидаемый ответ — содержательный, 2-4 предложения.
+- Все вопросы строго по теме материала.
+- id для каждого вопроса — уникальный UUID v4."""
+
+    user_message = f"""Курс: «{body.title}»
+Размер: {body.size}
+
+=== Материал ===
+{body.extractedText[:80_000]}"""
+
+    def _call_yandex(msgs: list) -> str:
+        from openai import OpenAI
+        client = OpenAI(
+            api_key=settings.yandex_api_key,
+            base_url="https://rest-assistant.api.cloud.yandex.net/v1",
+        )
+        response = client.chat.completions.create(
+            model=model,
+            messages=msgs,
+            temperature=0.4,
+            max_tokens=8000,
+        )
+        return response.choices[0].message.content or ""
+
+    t_start = time.monotonic()
+
+    # First attempt
+    raw = ""
+    try:
+        raw = _call_yandex([
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_message},
+        ])
+    except Exception as e:
+        log.error(f"[{request_id}] Yandex call failed: {e}")
+        raise HTTPException(status_code=502, detail=f"Yandex AI Studio error: {str(e)}")
+
+    yandex_ms = int((time.monotonic() - t_start) * 1000)
+    log.info(f"[{request_id}] Yandex response received yandex_ms={yandex_ms} raw_len={len(raw)}")
+
+    # Try to extract JSON array from response
+    def _extract_json(text: str) -> Optional[list]:
+        text = text.strip()
+        # Strip markdown code fences if present
+        for fence in ("```json", "```"):
+            if text.startswith(fence):
+                text = text[len(fence):]
+        if text.endswith("```"):
+            text = text[:-3]
+        text = text.strip()
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            # Try to find array boundaries
+            start = text.find("[")
+            end = text.rfind("]")
+            if start != -1 and end != -1 and end > start:
+                try:
+                    return json.loads(text[start:end + 1])
+                except Exception:
+                    pass
+        return None
+
+    parsed = _extract_json(raw)
+
+    # Repair pass if first attempt failed
+    if parsed is None:
+        log.warning(f"[{request_id}] JSON parse failed, attempting repair pass")
+        repair_prompt = f"""Твой предыдущий ответ содержит невалидный JSON.
+Исправь и верни ТОЛЬКО чистый JSON-массив вопросов без пояснений:
+
+{raw[:3000]}"""
+        try:
+            raw2 = _call_yandex([
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message},
+                {"role": "assistant", "content": raw},
+                {"role": "user", "content": repair_prompt},
+            ])
+            parsed = _extract_json(raw2)
+        except Exception as e:
+            log.error(f"[{request_id}] Repair pass failed: {e}")
+
+    if parsed is None or not isinstance(parsed, list):
+        log.error(f"[{request_id}] Could not parse Yandex response as JSON array. raw={raw[:500]}")
+        raise HTTPException(
+            status_code=502,
+            detail="Не удалось разобрать ответ Yandex AI Studio как JSON. Попробуйте ещё раз.",
+        )
+
+    # Validate each question with Pydantic; skip invalid items
+    validated_questions = []
+    for item in parsed:
+        if not isinstance(item, dict):
+            continue
+        # Ensure id field
+        if "id" not in item or not item["id"]:
+            item["id"] = str(uuid.uuid4())
+        try:
+            q = _Question(**item)
+            validated_questions.append(q.model_dump())
+        except Exception as e:
+            log.warning(f"[{request_id}] Skipping invalid question: {e} | item={item}")
+
+    if not validated_questions:
+        raise HTTPException(
+            status_code=502,
+            detail="Yandex AI Studio вернул вопросы в неожиданном формате. Попробуйте ещё раз.",
+        )
+
+    log.info(
+        f"[{request_id}] Training generated - draftCourseId={body.draftCourseId} "
+        f"questions={len(validated_questions)} yandex_ms={yandex_ms}"
+    )
+
+    return {"ok": True, "questions": validated_questions}
+
+
+# ─── C) POST /api/courses/finalize ───────────────────────────────────────────
+
+@app.post("/api/courses/finalize")
+async def finalize_course(
+    body: _FinalizeRequest,
+    user: dict = Depends(get_current_user),
+):
+    """
+    Save final course manifest with questions, generate invite code,
+    write code index for employee lookup.
+    """
+    import json
+    import random
+    import string
+    import uuid
+    from datetime import datetime, timezone
+    from api._lib.supabase_admin import get_admin_client
+
+    log = get_logger(__name__)
+    request_id = str(uuid.uuid4())[:8]
+    user_id = user["id"]
+    course_id = body.draftCourseId
+
+    log.info(
+        f"[{request_id}] POST /api/courses/finalize - userId={user_id} "
+        f"courseId={course_id} questions={len(body.questions)}"
+    )
+
+    supabase = get_admin_client()
+
+    def _generate_invite_code(length: int = 6) -> str:
+        chars = string.ascii_uppercase + string.digits
+        return "".join(random.choices(chars, k=length))
+
+    invite_code = _generate_invite_code()
+
+    # Build final manifest
+    quiz_count = sum(1 for q in body.questions if q.type == _QuestionType.quiz)
+    open_count = sum(1 for q in body.questions if q.type == _QuestionType.open)
+
+    manifest = {
+        "courseId": course_id,
+        "title": body.title,
+        "size": body.size,
+        "createdAt": datetime.now(timezone.utc).isoformat(),
+        "overallStatus": "ready",
+        "textBytes": 0,
+        "inviteCode": invite_code,
+        "employeesCount": 0,
+        "files": [f.model_dump() for f in body.uploadedFiles],
+        "questions": [q.model_dump() for q in body.questions],
+        "quizCount": quiz_count,
+        "openCount": open_count,
+    }
+
+    # Try to get textBytes from existing draft_manifest
+    try:
+        draft_bytes = supabase.storage.from_(COURSES_BUCKET).download(
+            f"{user_id}/{course_id}/draft_manifest.json"
+        )
+        draft_data = json.loads(draft_bytes.decode("utf-8"))
+        # Carry over any useful fields
+    except Exception:
+        pass
+
+    manifest_path = f"{user_id}/{course_id}/manifest.json"
+    try:
+        supabase.storage.from_(COURSES_BUCKET).upload(
+            manifest_path,
+            json.dumps(manifest, ensure_ascii=False, indent=2).encode("utf-8"),
+            {"content-type": "application/json", "upsert": "true"},
+        )
+    except Exception as e:
+        log.error(f"[{request_id}] Failed to save manifest: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to save manifest: {str(e)}")
+
+    # Save code index for employee lookup: _index/{inviteCode}.json
+    index_data = {"userId": user_id, "courseId": course_id}
+    try:
+        supabase.storage.from_(COURSES_BUCKET).upload(
+            f"_index/{invite_code}.json",
+            json.dumps(index_data).encode("utf-8"),
+            {"content-type": "application/json", "upsert": "true"},
+        )
+    except Exception as e:
+        log.warning(f"[{request_id}] Could not save code index: {e}")
+
+    log.info(
+        f"[{request_id}] Course finalized - courseId={course_id} "
+        f"inviteCode={invite_code} questions={len(body.questions)}"
+    )
+
+    return {"ok": True, "courseId": course_id, "courseCode": invite_code}
+
+
+# ─── D) GET /api/courses/by-code/{code} ──────────────────────────────────────
+
+@app.get("/api/courses/by-code/{code}")
+async def get_course_by_code(code: str):
+    """
+    Public endpoint: resolve invite code → return full course manifest.
+    Used by employees to access a course without knowing courseId.
+    """
+    import json
+    from api._lib.supabase_admin import get_admin_client
+
+    log = get_logger(__name__)
+
+    supabase = get_admin_client()
+
+    # Lookup index file
+    index_path = f"_index/{code.upper()}.json"
+    try:
+        index_bytes = supabase.storage.from_(COURSES_BUCKET).download(index_path)
+        index_data = json.loads(index_bytes.decode("utf-8"))
+    except Exception:
+        raise HTTPException(status_code=404, detail="Курс с таким кодом не найден")
+
+    user_id = index_data.get("userId")
+    course_id = index_data.get("courseId")
+    if not user_id or not course_id:
+        raise HTTPException(status_code=404, detail="Курс с таким кодом не найден")
+
+    manifest_path = f"{user_id}/{course_id}/manifest.json"
+    try:
+        manifest_bytes = supabase.storage.from_(COURSES_BUCKET).download(manifest_path)
+        manifest = json.loads(manifest_bytes.decode("utf-8"))
+    except Exception as e:
+        log.error(f"Could not read manifest for code {code}: {e}")
+        raise HTTPException(status_code=404, detail="Курс не найден")
+
+    return {"ok": True, "manifest": manifest}
+
+
+# ─── E) GET /api/yandex/health ───────────────────────────────────────────────
+
+@app.get("/api/yandex/health")
+async def yandex_health():
+    """Check if Yandex AI Studio credentials are configured (does not call the model)."""
+    folder_id = settings.yandex_folder_id
+    model = f"gpt://{folder_id}/yandexgpt" if folder_id else "(not set)"
+    if settings.yandex_model_uri and folder_id:
+        model = f"gpt://{folder_id}/{settings.yandex_model_uri}"
+    return {
+        "ok": True,
+        "api_key_set": bool(settings.yandex_api_key),
+        "folder_id_set": bool(settings.yandex_folder_id),
+        "prompt_id": settings.yandex_prompt_id or None,
+        "model": model,
+    }

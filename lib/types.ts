@@ -23,6 +23,21 @@ export interface CourseManifestFile {
   parseError?: string;
 }
 
+// ─── Training / Questions ─────────────────────────────────────────────────────
+
+export type QuestionType = 'quiz' | 'open';
+
+export interface Question {
+  id: string;
+  type: QuestionType;
+  prompt: string;
+  quizOptions?: [string, string, string, string];
+  correctIndex?: 0 | 1 | 2 | 3;
+  expectedAnswer?: string;
+}
+
+// ─── Course Manifest (Storage-based) ─────────────────────────────────────────
+
 export interface CourseManifest {
   courseId: string;
   title: string;
@@ -33,6 +48,26 @@ export interface CourseManifest {
   inviteCode: string;         // short 6-char alphanumeric code
   employeesCount: number;     // enrolled employees
   files: CourseManifestFile[];
+  questions?: Question[];     // AI-generated training questions
+  quizCount?: number;
+  openCount?: number;
+}
+
+// ─── Draft (before finalization) ─────────────────────────────────────────────
+
+export interface DraftUploadedFile {
+  path: string;         // safe key e.g. "uuid.pdf"
+  storagePath: string;  // full bucket path
+  originalName: string;
+  mime: string;
+  size: number;
+}
+
+export interface DraftPayload {
+  draftCourseId: string;
+  uploadedFiles: DraftUploadedFile[];
+  extractedText: string;
+  extractedStats: { chars: number; filesCount: number; truncated: boolean };
 }
 
 export interface Profile {

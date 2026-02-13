@@ -20,10 +20,16 @@ class Settings(BaseSettings):
     # Git commit SHA (optional, injected by Vercel)
     git_sha: str = "unknown"
 
+    # Yandex AI Studio
+    yandex_api_key: str = ""
+    yandex_folder_id: str = ""
+    yandex_prompt_id: str = ""     # optional Yandex AI Studio prompt/agent ID
+    yandex_model_uri: str = ""     # optional override, e.g. "yandexgpt-lite/latest"
+
     # Vercel deployment metadata
     vercel_env: str = "local"
     vercel_url: str = ""
-    
+
     class Config:
         env_file = ".env.local"
         case_sensitive = False
@@ -37,4 +43,8 @@ settings = Settings(
     git_sha=os.getenv("GIT_SHA", os.getenv("VERCEL_GIT_COMMIT_SHA", "unknown")),
     vercel_env=os.getenv("VERCEL_ENV", "local"),
     vercel_url=os.getenv("VERCEL_URL", ""),
+    yandex_api_key=os.getenv("YANDEX_API_KEY", ""),
+    yandex_folder_id=os.getenv("YANDEX_FOLDER_ID", ""),
+    yandex_prompt_id=os.getenv("YANDEX_PROMPT_ID", ""),
+    yandex_model_uri=os.getenv("YANDEX_MODEL_URI", ""),
 )

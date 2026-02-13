@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createServiceClient } from '@supabase/supabase-js';
 import { SignOutButton } from '@/components/dashboard/SignOutButton';
+import { CourseCodeEntry } from '@/components/employee/CourseCodeEntry';
 
 function LogoMark() {
   return (
@@ -205,25 +206,7 @@ export default async function DashboardPage() {
               </div>
             </div>
 
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 text-center">
-              <div className="max-w-md mx-auto">
-                <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <span className="text-4xl">📖</span>
-                </div>
-                <h2 className="font-display text-2xl font-bold text-gray-900 mb-2">
-                  Ваши курсы появятся здесь
-                </h2>
-                <p className="text-gray-600 mb-6">
-                  Когда куратор назначит вам курсы, они появятся здесь. Вы сможете проходить интерактивные тесты и отслеживать свой прогресс.
-                </p>
-                <div className="inline-flex items-center gap-2 text-sm text-gray-500">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  Загляните позже
-                </div>
-              </div>
-            </div>
+            <CourseCodeEntry />
           </div>
         )}
       </main>
