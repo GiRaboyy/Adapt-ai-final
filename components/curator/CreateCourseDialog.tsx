@@ -17,7 +17,7 @@ import {
 import { cn } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
 import { CourseManifest, CourseSize } from '@/lib/types';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, safeJson } from '@/lib/api';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -323,9 +323,9 @@ export function CreateCourseDialog({
           files: uploadedFiles,
         }),
       });
-      const data = await res.json();
+      const data = await safeJson<{ ok: boolean; manifest: CourseManifest; detail?: string; message?: string }>(res);
 
-      if (!res.ok || !data.ok) {
+      if (!data.ok) {
         throw new Error(data.detail ?? data.message ?? 'Сервер вернул ошибку');
       }
 

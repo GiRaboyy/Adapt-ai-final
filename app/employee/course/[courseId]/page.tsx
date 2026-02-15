@@ -116,12 +116,16 @@ function EmployeeCoursePageInner() {
         const url = `/api/courses/by-code/${lookupCode}`;
 
         const res = await fetch(url);
-        const data = await res.json();
+        const text = await res.text();
+        let data: Record<string, unknown>;
+        try {
+          data = JSON.parse(text);
+        } catch {
+          throw new Error(`Сервер вернул некорректный ответ (HTTP ${res.status})`);
+        }
 
-        // If by-code fails, the courseId itself might be the actual courseId (not a code)
-        // In that case, we can't fetch without auth. Show a helpful error.
         if (!res.ok || !data.ok) {
-          throw new Error(data.detail ?? 'Курс не найден. Проверьте код или ссылку.');
+          throw new Error((data.detail as string) ?? 'Курс не найден. Проверьте код или ссылку.');
         }
 
         setManifest(data.manifest as CourseManifest);

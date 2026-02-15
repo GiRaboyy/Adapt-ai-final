@@ -71,8 +71,12 @@ export function BookCallModal({ open, onOpenChange }: BookCallModalProps) {
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.detail || 'Request failed');
+        let detail = 'Request failed';
+        try {
+          const errorBody = await response.json();
+          detail = errorBody.detail || detail;
+        } catch { /* non-JSON error response */ }
+        throw new Error(detail);
       }
 
       const data = await response.json();

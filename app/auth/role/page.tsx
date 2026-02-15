@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, safeJson } from '@/lib/api';
 import { LegacyButton as Button } from '@/components/ui/LegacyButton';
 import { AuthLayout } from '@/components/auth/AuthLayout';
 
@@ -31,7 +31,7 @@ export default function RoleSelectionPage() {
 
       // Check role via FastAPI (bypasses RLS)
       const res = await apiFetch('/api/profile/role');
-      const { role } = await res.json();
+      const { role } = await safeJson<{ role: string | null }>(res);
 
       if (role) {
         router.replace('/dashboard');
@@ -75,28 +75,7 @@ export default function RoleSelectionPage() {
         return;
       }
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        console.error('Role save error:', {
-          status: response.status,
-          statusText: response.statusText,
-          error: errorData,
-        });
-        
-        // Show detailed error in console for debugging
-        if (errorData.details) {
-          console.error('Error details:', errorData.details);
-        }
-        if (errorData.code) {
-          console.error('Error code:', errorData.code);
-        }
-        
-        setError('Не удалось сохранить роль. Попробуйте ещё раз.');
-        setIsLoading(false);
-        return;
-      }
-
-      const result = await response.json();
+      const result = await safeJson<{ ok: boolean; profile: unknown }>(response);
       console.log('Role saved successfully:', result);
 
       // Success - redirect to dashboard

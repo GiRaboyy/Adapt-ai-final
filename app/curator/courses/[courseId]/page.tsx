@@ -18,7 +18,7 @@ import {
   Calendar,
 } from 'lucide-react';
 import { CourseManifest, CourseManifestFile, Question } from '@/lib/types';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, safeJson } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
 
@@ -93,12 +93,12 @@ export default function CourseDetailPage() {
     if (!courseId) return;
     setLoading(true);
     apiFetch(`/api/courses/${courseId}`)
-      .then((r) => r.json())
+      .then((r) => safeJson<{ ok: boolean; manifest: CourseManifest }>(r))
       .then((data) => {
-        if (data.ok) setManifest(data.manifest as CourseManifest);
+        if (data.ok) setManifest(data.manifest);
         else setError('Курс не найден');
       })
-      .catch((e) => setError(e.message))
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Ошибка загрузки'))
       .finally(() => setLoading(false));
   }, [courseId]);
 
@@ -396,8 +396,8 @@ function MaterialsTab({
     setDownloadError(null);
     try {
       const res = await apiFetch(`/api/courses/${courseId}/files/${file.fileId}/download`);
-      const data = await res.json();
-      if (!res.ok || !data.ok) throw new Error(data.detail ?? 'Не удалось получить ссылку');
+      const data = await safeJson<{ ok: boolean; url: string; fileName: string; detail?: string }>(res);
+      if (!data.ok) throw new Error(data.detail ?? 'Не удалось получить ссылку');
       const a = document.createElement('a');
       a.href = data.url;
       a.download = data.fileName ?? file.name;

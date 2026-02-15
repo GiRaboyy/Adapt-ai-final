@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { LegacyInput as Input } from '@/components/ui/LegacyInput';
 import { LegacyButton as Button } from '@/components/ui/LegacyButton';
 import { createClient } from '@/lib/supabase/client';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, safeJson } from '@/lib/api';
 
 interface LoginFormProps {
   prefillEmail?: string;
@@ -64,7 +64,7 @@ export function LoginForm({ prefillEmail = '' }: LoginFormProps) {
 
       // Check if user has a role via FastAPI (bypasses RLS)
       const roleRes = await apiFetch('/api/profile/role');
-      const { role } = await roleRes.json();
+      const { role } = await safeJson<{ role: string | null }>(roleRes);
 
       if (!role) {
         router.push('/auth/role');

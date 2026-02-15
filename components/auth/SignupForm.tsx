@@ -69,7 +69,15 @@ export function SignupForm({ onSignupSuccess, switchToLogin }: SignupFormProps) 
       });
 
       if (emailCheckResponse.ok) {
-        const { exists, confirmed } = await emailCheckResponse.json();
+        let exists = false;
+        let confirmed: boolean | null = null;
+        try {
+          const parsed = await emailCheckResponse.json();
+          exists = parsed.exists;
+          confirmed = parsed.confirmed;
+        } catch {
+          // Non-JSON response — skip email check gracefully
+        }
 
         if (exists) {
           if (confirmed) {

@@ -18,7 +18,7 @@ import {
 import { CreateCourseWizard } from '@/components/curator/CreateCourseWizard';
 import { CourseManifest } from '@/lib/types';
 import { createClient } from '@/lib/supabase/client';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, safeJson } from '@/lib/api';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 
@@ -133,8 +133,8 @@ function CoursesPageInner() {
     setFetchError('');
     try {
       const res = await apiFetch('/api/courses/list');
-      const data = await res.json();
-      if (data.ok) setCourses(data.courses as CourseManifest[]);
+      const data = await safeJson<{ ok: boolean; courses: CourseManifest[] }>(res);
+      if (data.ok) setCourses(data.courses);
       else setFetchError('Не удалось загрузить курсы');
     } catch (err: unknown) {
       setFetchError(err instanceof Error ? err.message : 'Ошибка загрузки');

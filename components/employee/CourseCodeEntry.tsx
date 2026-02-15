@@ -21,7 +21,13 @@ export function CourseCodeEntry() {
     setError('');
     try {
       const res = await fetch(`/api/courses/by-code/${trimmed}`);
-      const data = await res.json();
+      const text = await res.text();
+      let data: { ok?: boolean; detail?: string; manifest?: { courseId?: string } };
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new Error(`Сервер вернул некорректный ответ (HTTP ${res.status})`);
+      }
       if (!res.ok || !data.ok) {
         throw new Error(data.detail ?? 'Курс с таким кодом не найден');
       }
