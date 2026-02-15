@@ -1324,6 +1324,7 @@ async def generate_training(
         if text.endswith("```"):
             text = text[:-3]
         text = text.strip()
+        data = None
         try:
             data = json.loads(text)
         except json.JSONDecodeError:
@@ -1337,15 +1338,20 @@ async def generate_training(
                         break
                     except Exception:
                         pass
-            else:
-                return None
-        # Unwrap batch-object format: {"batch": {"steps": [...]}}
+        if data is None:
+            return None
+        # Unwrap any known wrapper dict formats:
+        # {"batch": {"steps": [...]}}, {"questions": [...]}, {"steps": [...]}, etc.
         if isinstance(data, dict):
-            batch = data.get("batch", data)
-            if isinstance(batch, dict):
-                steps = batch.get("steps")
-                if isinstance(steps, list):
-                    return steps
+            for key in ("batch", "questions", "steps", "data", "result", "items"):
+                val = data.get(key)
+                if isinstance(val, list):
+                    return val
+                if isinstance(val, dict):
+                    for inner_key in ("steps", "questions", "items"):
+                        inner = val.get(inner_key)
+                        if isinstance(inner, list):
+                            return inner
             return None
         if isinstance(data, list):
             return data
@@ -1361,7 +1367,11 @@ async def generate_training(
         if step_type == "mcq":
             item["type"] = "quiz"
             item["prompt"] = step.get("question", "")
-            item["quizOptions"] = step.get("options", [])
+            opts = list(step.get("options") or [])
+            # Ensure exactly 4 options
+            while len(opts) < 4:
+                opts.append("")
+            item["quizOptions"] = opts[:4]
             item["correctIndex"] = step.get("correct_index", 0)
             item["expectedAnswer"] = step.get("explanation", "")
         elif step_type == "open":
@@ -1377,6 +1387,12 @@ async def generate_training(
             item["expectedAnswer"] = step.get("ideal_answer", "")
         else:
             return None
+        # Ensure quiz questions always have exactly 4 options
+        if item.get("type") == "quiz":
+            opts = list(item.get("quizOptions") or [])
+            while len(opts) < 4:
+                opts.append("")
+            item["quizOptions"] = opts[:4]
         return item
 
     parsed = _extract_json(raw)
@@ -1411,24 +1427,37 @@ async def generate_training(
         # Ensure id field
         if "id" not in item or not item["id"]:
             item["id"] = str(uuid.uuid4())
+        # Ensure quiz questions always have exactly 4 options
+        if item.get("type") == "quiz":
+            opts = list(item.get("quizOptions") or [])
+            while len(opts) < 4:
+                opts.append("")
+            item["quizOptions"] = opts[:4]
+            if item.get("correctIndex") is None:
+                item["correctIndex"] = 0
         try:
             q = _Question(**item)
             validated_questions.append(q.model_dump())
         except Exception as e:
             log.warning(f"[{request_id}] Skipping invalid question: {e} | item={item}")
 
+    quiz_count = sum(1 for q in validated_questions if q.get("type") == "quiz")
+    open_count = sum(1 for q in validated_questions if q.get("type") == "open")
+
+    log.info(
+        f"[{request_id}] extracted_text_length={len(body.extractedText)} "
+        f"questions_total={len(validated_questions)} "
+        f"quiz_count={quiz_count} open_count={open_count} yandex_ms={yandex_ms}"
+    )
+
     if not validated_questions:
+        log.error(f"[{request_id}] No valid questions after parsing. raw={raw[:500]}")
         raise HTTPException(
             status_code=502,
             detail="Yandex AI Studio вернул вопросы в неожиданном формате. Попробуйте ещё раз.",
         )
 
-    log.info(
-        f"[{request_id}] Training generated - draftCourseId={body.draftCourseId} "
-        f"questions={len(validated_questions)} yandex_ms={yandex_ms}"
-    )
-
-    return {"ok": True, "questions": validated_questions}
+    return {"ok": True, "questions": validated_questions, "questionsCount": len(validated_questions)}
 
 
 # ─── C) POST /api/courses/finalize ───────────────────────────────────────────

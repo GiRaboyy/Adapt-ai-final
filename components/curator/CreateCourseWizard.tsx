@@ -645,28 +645,7 @@ function EditingPhase({
 
   return (
     <>
-      <WizardHeader
-        breadcrumb={title || 'Редактирование'}
-        right={
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 bg-zinc-800 px-3 py-1.5 rounded-full text-xs font-medium border border-zinc-700">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#85EB59] shadow-[0_0_6px_#85EB59]" />
-              <span className="text-gray-200">Черновик</span>
-            </div>
-            <button
-              onClick={onSave}
-              disabled={isSaving || questions.length === 0}
-              className={cn(
-                'bg-[#85EB59] hover:bg-[#76d44f] text-black font-semibold py-2.5 px-6 rounded-lg transition-all flex items-center gap-2 text-sm shadow-sm',
-                (isSaving || questions.length === 0) && 'opacity-50 cursor-not-allowed'
-              )}
-            >
-              {isSaving && <Loader2 size={14} className="animate-spin" />}
-              Сохранить
-            </button>
-          </div>
-        }
-      />
+      <WizardHeader breadcrumb={title || 'Редактирование'} />
       <ProgressBar phase="editing" />
 
       {/* Error */}
@@ -724,16 +703,26 @@ function EditingPhase({
               );
             })}
           </div>
-          <div className="p-4 border-t border-gray-100">
+          <div className="p-4 border-t border-gray-100 space-y-2">
             <button
               onClick={() => {
                 addQuestion('quiz');
                 setSelectedIdx(questions.length);
               }}
-              className="w-full py-2.5 text-xs font-bold uppercase tracking-wide border border-dashed border-gray-300 rounded-lg text-gray-500 hover:border-[#85EB59] hover:text-[#85EB59] hover:bg-[#85EB59]/5 transition-all flex items-center justify-center gap-2"
+              className="w-full py-2 text-xs font-bold uppercase tracking-wide border border-dashed border-gray-300 rounded-lg text-gray-500 hover:border-[#85EB59] hover:text-[#85EB59] hover:bg-[#85EB59]/5 transition-all flex items-center justify-center gap-2"
             >
-              <Plus size={14} />
-              Добавить вопрос
+              <Plus size={13} />
+              Добавить Quiz
+            </button>
+            <button
+              onClick={() => {
+                addQuestion('open');
+                setSelectedIdx(questions.length);
+              }}
+              className="w-full py-2 text-xs font-bold uppercase tracking-wide border border-dashed border-gray-300 rounded-lg text-gray-500 hover:border-[#FFBA49] hover:text-[#FFBA49] hover:bg-[#FFBA49]/5 transition-all flex items-center justify-center gap-2"
+            >
+              <Plus size={13} />
+              Открытый вопрос
             </button>
           </div>
         </aside>
@@ -742,24 +731,12 @@ function EditingPhase({
         <main className="flex-1 overflow-y-auto bg-[#FAFAFA]">
           <div className="max-w-3xl mx-auto py-10 px-8 pb-32">
             {questions.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-24 text-center gap-4">
-                <p className="text-gray-400 text-lg">Вопросы не сгенерированы</p>
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => addQuestion('quiz')}
-                    className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[#85EB59] text-black font-semibold text-sm hover:bg-[#76d44f] transition"
-                  >
-                    <Plus size={15} />
-                    Добавить Quiz
-                  </button>
-                  <button
-                    onClick={() => addQuestion('open')}
-                    className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-gray-200 text-gray-700 font-medium text-sm hover:bg-gray-50 transition"
-                  >
-                    <Plus size={15} />
-                    Открытый вопрос
-                  </button>
+              <div className="flex flex-col items-center justify-center py-24 text-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-gray-100 flex items-center justify-center mb-2">
+                  <Plus size={22} className="text-gray-400" />
                 </div>
+                <p className="text-gray-900 font-semibold">Вопросы отсутствуют</p>
+                <p className="text-gray-400 text-sm">Используйте кнопки слева для добавления вопросов</p>
               </div>
             ) : selected ? (
               <>
@@ -909,102 +886,34 @@ function EditingPhase({
                   </div>
                 </div>
 
-                {/* Add question buttons */}
-                <div className="flex gap-3 mt-6">
-                  <button
-                    onClick={() => {
-                      addQuestion('quiz');
-                      setSelectedIdx(questions.length);
-                    }}
-                    className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-dashed border-gray-300 text-sm font-medium text-gray-500 hover:border-[#85EB59] hover:text-[#85EB59] hover:bg-[#85EB59]/5 transition-all"
-                  >
-                    <Plus size={14} />
-                    Добавить Quiz
-                  </button>
-                  <button
-                    onClick={() => {
-                      addQuestion('open');
-                      setSelectedIdx(questions.length);
-                    }}
-                    className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-dashed border-gray-300 text-sm font-medium text-gray-500 hover:border-[#85EB59] hover:text-[#85EB59] hover:bg-[#85EB59]/5 transition-all"
-                  >
-                    <Plus size={14} />
-                    Открытый вопрос
-                  </button>
-                </div>
               </>
-            ) : null}
+            ) : (
+              <div className="flex flex-col items-center justify-center py-32 text-center gap-2">
+                <p className="text-gray-400 text-sm">Выберите вопрос слева</p>
+              </div>
+            )}
           </div>
         </main>
 
-        {/* Right sidebar — questions overview */}
-        <aside className="w-[320px] border-l border-gray-100 flex flex-col shrink-0 bg-white">
-          <div className="flex items-center justify-between p-5 border-b border-gray-100">
-            <div className="flex items-center gap-2">
-              <h3 className="font-bold text-xs uppercase tracking-widest text-gray-900">
-                Вопросы
-              </h3>
-              <span className="px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded text-[10px] font-bold">
-                {questions.length}
-              </span>
-            </div>
-          </div>
-          {/* Tabs */}
-          <div className="flex border-b border-gray-100">
-            <button className="flex-1 py-3 text-sm font-medium border-b-2 border-[#85EB59] text-black">
-              Все вопросы
-            </button>
-            <button className="flex-1 py-3 text-sm font-medium text-gray-400 hover:text-gray-600">
-              Файлы
-            </button>
-          </div>
-          <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50/50">
-            {questions.map((q, idx) => {
-              const isSelected = idx === selectedIdx;
-              return (
-                <div
-                  key={q.id}
-                  onClick={() => setSelectedIdx(idx)}
-                  className={cn(
-                    'p-4 rounded-xl border bg-white cursor-pointer transition-all relative',
-                    isSelected
-                      ? 'border-[#85EB59] shadow-sm ring-1 ring-[#85EB59]/20'
-                      : 'border-gray-200 hover:border-gray-300 hover:shadow-sm'
-                  )}
-                >
-                  {isSelected && (
-                    <div className="absolute -left-1 top-1/2 -translate-y-1/2 w-1 h-8 bg-[#85EB59] rounded-r" />
-                  )}
-                  <div className="flex items-center justify-between mb-2">
-                    <span
-                      className={cn(
-                        'text-[9px] font-bold px-1.5 py-0.5 rounded uppercase',
-                        q.type === 'quiz' ? 'bg-[#FFBA49] text-black' : 'bg-gray-100 text-gray-500'
-                      )}
-                    >
-                      {q.type === 'quiz' ? 'Квиз' : 'Открытый'}
-                    </span>
-                  </div>
-                  <p className="text-xs font-semibold text-gray-900 line-clamp-2 leading-relaxed">
-                    {q.prompt || 'Без текста'}
-                  </p>
-                </div>
-              );
-            })}
-          </div>
-          <div className="p-4 border-t border-gray-100 bg-white">
-            <button
-              onClick={() => {
-                addQuestion('quiz');
-                setSelectedIdx(questions.length);
-              }}
-              className="w-full py-2.5 border border-dashed border-gray-300 rounded-lg text-xs font-medium text-gray-500 hover:border-[#85EB59] hover:text-[#85EB59] hover:bg-[#85EB59]/5 transition-all flex items-center justify-center gap-2"
-            >
-              <Plus size={14} />
-              Добавить вопрос
-            </button>
-          </div>
-        </aside>
+      </div>
+
+      {/* Sticky save rail — bottom right */}
+      <div className="fixed bottom-8 right-8 z-40 flex flex-col items-end gap-3">
+        <div className="flex items-center gap-2 bg-zinc-800 px-3 py-1.5 rounded-full text-xs font-medium border border-zinc-700">
+          <span className="w-1.5 h-1.5 rounded-full bg-[#85EB59] shadow-[0_0_6px_#85EB59]" />
+          <span className="text-gray-200">Черновик</span>
+        </div>
+        <button
+          onClick={onSave}
+          disabled={isSaving || questions.length === 0}
+          className={cn(
+            'bg-[#85EB59] hover:bg-[#76d44f] text-black font-semibold py-3 px-8 rounded-xl transition-all flex items-center gap-2 text-sm shadow-lg shadow-[#85EB59]/20',
+            (isSaving || questions.length === 0) && 'opacity-50 cursor-not-allowed'
+          )}
+        >
+          {isSaving && <Loader2 size={14} className="animate-spin" />}
+          Сохранить
+        </button>
       </div>
     </>
   );
@@ -1138,6 +1047,10 @@ export function CreateCourseWizard({ open, onClose, onSuccess }: Props) {
         throw new Error('Ошибка генерации вопросов');
       }
 
+      if (!data.questions || data.questions.length === 0) {
+        throw new Error('Не удалось сгенерировать вопросы. Попробуйте ещё раз.');
+      }
+
       // Step 2 done → step 3 active
       setLoadingStep(3);
       await new Promise((r) => setTimeout(r, 500));
@@ -1148,9 +1061,7 @@ export function CreateCourseWizard({ open, onClose, onSuccess }: Props) {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg);
-      setQuestions([]);
-      setSelectedIdx(0);
-      setPhase('editing');
+      setPhase('form');
     }
   };
 

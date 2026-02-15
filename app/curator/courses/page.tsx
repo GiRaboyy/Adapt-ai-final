@@ -52,13 +52,13 @@ function getCourseStats(courseId: string) {
 }
 
 const COVER_COLORS = [
-  { bg: 'bg-blue-50',    text: 'text-blue-500' },
-  { bg: 'bg-orange-50',  text: 'text-orange-500' },
-  { bg: 'bg-purple-50',  text: 'text-purple-500' },
-  { bg: 'bg-emerald-50', text: 'text-emerald-500' },
-  { bg: 'bg-pink-50',    text: 'text-pink-500' },
-  { bg: 'bg-yellow-50',  text: 'text-yellow-500' },
-  { bg: 'bg-teal-50',    text: 'text-teal-500' },
+  { bg: 'bg-[#85EB59]/10', text: 'text-black' },
+  { bg: 'bg-[#FFBA49]/10', text: 'text-black' },
+  { bg: 'bg-gray-100',     text: 'text-gray-600' },
+  { bg: 'bg-[#85EB59]/15', text: 'text-black' },
+  { bg: 'bg-[#FFBA49]/15', text: 'text-black' },
+  { bg: 'bg-gray-200',     text: 'text-gray-700' },
+  { bg: 'bg-[#85EB59]/20', text: 'text-black' },
 ];
 
 const COVER_ICONS = ['📚', '🤝', '🧠', '🌿', '💻', '📊', '🎯'];
@@ -240,7 +240,7 @@ function CoursesPageInner() {
             <div className="flex items-start justify-between mb-3">
               <span className="text-[13px] font-medium text-gray-500">Активных курсов</span>
               <div className="w-8 h-8 rounded-lg bg-[#85EB59]/10 flex items-center justify-center">
-                <BookOpen size={15} className="text-[#4a8a20]" />
+                <BookOpen size={15} className="text-black" />
               </div>
             </div>
             <div className="flex items-end gap-2">
@@ -277,8 +277,8 @@ function CoursesPageInner() {
           <div className="bg-white border border-gray-100 rounded-xl p-6 shadow-[0_2px_8px_rgba(0,0,0,0.03)] hover:shadow-md transition-shadow">
             <div className="flex items-start justify-between mb-3">
               <span className="text-[13px] font-medium text-gray-500">Прошли обучение</span>
-              <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
-                <TrendingUp size={15} className="text-blue-500" />
+              <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center">
+                <TrendingUp size={15} className="text-gray-600" />
               </div>
             </div>
             <div className="flex items-end gap-3">
@@ -435,7 +435,7 @@ function CoursesPageInner() {
                               {icon}
                             </div>
                             <div className="min-w-0">
-                              <div className="text-[13px] font-semibold text-gray-900 group-hover:text-[#3d7a10] transition-colors truncate max-w-[260px]">
+                              <div className="text-[13px] font-semibold text-gray-900 group-hover:text-black transition-colors truncate max-w-[260px]">
                                 {course.title}
                               </div>
                               <div className="flex items-center gap-2 mt-0.5">
@@ -455,18 +455,18 @@ function CoursesPageInner() {
                         {/* Status */}
                         <td className="px-4 py-4">
                           {isReady ? (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-green-100 text-green-800">
-                              <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-[#85EB59]/15 text-black border border-[#85EB59]/30">
+                              <span className="w-1.5 h-1.5 rounded-full bg-[#85EB59]" />
                               Активен
                             </span>
                           ) : course.overallStatus === 'processing' ? (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-amber-100 text-amber-700">
-                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-[#FFBA49]/15 text-black border border-[#FFBA49]/30">
+                              <span className="w-1.5 h-1.5 rounded-full bg-[#FFBA49] animate-pulse" />
                               Обработка
                             </span>
                           ) : course.overallStatus === 'error' ? (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-red-100 text-red-600">
-                              <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-gray-100 text-gray-700 border border-gray-200">
+                              <span className="w-1.5 h-1.5 rounded-full bg-gray-500" />
                               Ошибка
                             </span>
                           ) : (
@@ -520,7 +520,7 @@ function CoursesPageInner() {
                         {/* Проблемные темы */}
                         <td className="px-4 py-4">
                           {problems > 0 ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-red-50 text-red-600 border border-red-100">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-[#FFBA49]/15 text-black border border-[#FFBA49]/30">
                               {problems} {problems === 1 ? 'тема' : 'темы'}
                               <AlertTriangle size={11} />
                             </span>
