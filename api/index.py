@@ -742,6 +742,21 @@ async def process_course(
     if body.userId != user_id:
         raise HTTPException(status_code=403, detail="Forbidden")
 
+    # Enforce file size limits before downloading anything
+    MAX_TOTAL_SIZE = 300 * 1024 * 1024  # 300 MB
+    for f in body.files:
+        if f.size > MAX_FILE_SIZE:
+            raise HTTPException(
+                status_code=413,
+                detail=f"Файл «{f.originalName}» ({f.size // (1024*1024)} МБ) превышает лимит 30 МБ.",
+            )
+    total_upload_size = sum(f.size for f in body.files)
+    if total_upload_size > MAX_TOTAL_SIZE:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Суммарный размер файлов ({total_upload_size // (1024*1024)} МБ) превышает лимит 300 МБ.",
+        )
+
     supabase = get_admin_client()
     _ensure_courses_bucket(supabase)
 
@@ -873,11 +888,27 @@ async def process_course(
         log.error(f"Failed to save manifest: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to save manifest: {str(e)}")
 
-    log.info(f"Course processed - courseId={course_id}, status={overall_status}, files={len(parsed_files)}")
+    # Build extractedText for question generation (truncate to 100k chars)
+    combined_str = "\n\n".join(combined_parts) if combined_parts else ""
+    MAX_CHARS = 100_000
+    truncated = len(combined_str) > MAX_CHARS
+    if truncated:
+        combined_str = combined_str[:MAX_CHARS]
+
+    log.info(
+        f"Course processed - courseId={course_id}, status={overall_status}, "
+        f"files={len(parsed_files)}, extractedChars={len(combined_str)}, truncated={truncated}"
+    )
 
     return {
         "ok": True,
         "manifest": manifest.model_dump(),
+        "extractedText": combined_str,
+        "extractedStats": {
+            "chars": len(combined_str),
+            "filesCount": len([f for f in parsed_files if f.parseStatus == "parsed"]),
+            "truncated": truncated,
+        },
     }
 
 
@@ -1357,89 +1388,200 @@ async def generate_training(
             return data
         return None
 
+    _QUIZ_TYPES = {"mcq", "quiz", "multiple_choice", "test"}
+    _OPEN_TYPES = {"open", "open_ended", "open-ended", "essay", "short_answer"}
+    _ROLEPLAY_TYPES = {"roleplay", "role_play", "scenario"}
+
+    def _first_non_empty(*values: object) -> str:
+        """Return the first truthy stripped string from values."""
+        for v in values:
+            if isinstance(v, str) and v.strip():
+                return v.strip()
+        return ""
+
     def _normalize_step(step: dict, idx: int) -> Optional[dict]:
         """Convert Yandex batch step format to _Question-compatible dict."""
-        step_type = step.get("type", "")
+        step_type = (step.get("type") or "").lower().strip()
         item: dict = {
             "id": str(uuid.uuid4()),
             "tag": step.get("tag", ""),
         }
-        if step_type == "mcq":
+
+        if step_type in _QUIZ_TYPES:
             item["type"] = "quiz"
-            item["prompt"] = step.get("question", "")
-            opts = list(step.get("options") or [])
-            # Ensure exactly 4 options
+            item["prompt"] = _first_non_empty(
+                step.get("question"), step.get("prompt"), step.get("text"), step.get("задание"),
+            )
+            opts = list(
+                step.get("options") or step.get("answers") or
+                step.get("choices") or step.get("варианты") or []
+            )
             while len(opts) < 4:
                 opts.append("")
-            item["quizOptions"] = opts[:4]
-            item["correctIndex"] = step.get("correct_index", 0)
-            item["expectedAnswer"] = step.get("explanation", "")
-        elif step_type == "open":
-            item["type"] = "open"
-            item["prompt"] = step.get("prompt", "")
-            rubric = step.get("rubric", [])
-            item["expectedAnswer"] = step.get("sample_good_answer") or (
-                "; ".join(rubric) if rubric else ""
+            item["quizOptions"] = [str(o).strip() for o in opts[:4]]
+            # Accept multiple key names for correct index
+            ci = (
+                step.get("correct_index") if step.get("correct_index") is not None
+                else step.get("correctIndex") if step.get("correctIndex") is not None
+                else step.get("correct_answer_index") if step.get("correct_answer_index") is not None
+                else step.get("right_index") if step.get("right_index") is not None
+                else 0
             )
-        elif step_type == "roleplay":
+            try:
+                ci = int(ci)
+            except (TypeError, ValueError):
+                ci = 0
+            item["correctIndex"] = ci if 0 <= ci <= 3 else 0
+            item["expectedAnswer"] = _first_non_empty(
+                step.get("explanation"), step.get("объяснение"),
+            )
+
+        elif step_type in _OPEN_TYPES:
             item["type"] = "open"
-            item["prompt"] = step.get("scenario", step.get("task", ""))
-            item["expectedAnswer"] = step.get("ideal_answer", "")
+            item["prompt"] = _first_non_empty(
+                step.get("prompt"), step.get("question"), step.get("text"), step.get("задание"),
+            )
+            rubric = step.get("rubric", [])
+            item["expectedAnswer"] = _first_non_empty(
+                step.get("sample_good_answer"), step.get("expectedAnswer"),
+                step.get("answer"), step.get("ответ"),
+                "; ".join(rubric) if isinstance(rubric, list) and rubric else "",
+            )
+
+        elif step_type in _ROLEPLAY_TYPES:
+            item["type"] = "open"
+            item["prompt"] = _first_non_empty(
+                step.get("scenario"), step.get("task"), step.get("prompt"),
+            )
+            item["expectedAnswer"] = _first_non_empty(
+                step.get("ideal_answer"), step.get("answer"),
+            )
+
         else:
+            # Heuristic fallback: detect type from available keys
+            has_options = bool(step.get("options") or step.get("answers") or step.get("choices"))
+            has_text = bool(step.get("question") or step.get("prompt") or step.get("text"))
+            if has_options:
+                item["type"] = "quiz"
+                item["prompt"] = _first_non_empty(
+                    step.get("question"), step.get("prompt"), step.get("text"),
+                )
+                opts = list(step.get("options") or step.get("answers") or step.get("choices") or [])
+                while len(opts) < 4:
+                    opts.append("")
+                item["quizOptions"] = [str(o).strip() for o in opts[:4]]
+                ci = step.get("correct_index", step.get("correctIndex", 0))
+                try:
+                    ci = int(ci)
+                except (TypeError, ValueError):
+                    ci = 0
+                item["correctIndex"] = ci if 0 <= ci <= 3 else 0
+                item["expectedAnswer"] = _first_non_empty(step.get("explanation"))
+            elif has_text:
+                item["type"] = "open"
+                item["prompt"] = _first_non_empty(
+                    step.get("question"), step.get("prompt"), step.get("text"),
+                )
+                item["expectedAnswer"] = _first_non_empty(
+                    step.get("answer"), step.get("sample_good_answer"),
+                )
+            else:
+                return None
+
+        # Validate: skip items with empty prompt
+        if not item.get("prompt", "").strip():
             return None
-        # Ensure quiz questions always have exactly 4 options
+
+        # Validate quiz: must have at least 2 non-empty options
         if item.get("type") == "quiz":
             opts = list(item.get("quizOptions") or [])
+            non_empty = [o for o in opts if str(o).strip()]
+            if len(non_empty) < 2:
+                return None
             while len(opts) < 4:
                 opts.append("")
             item["quizOptions"] = opts[:4]
+
         return item
 
-    parsed = _extract_json(raw)
+    _ALL_KNOWN_TYPES = _QUIZ_TYPES | _OPEN_TYPES | _ROLEPLAY_TYPES
 
-    # Retry once if JSON parse failed
-    if parsed is None:
-        log.warning(f"[{request_id}] JSON parse failed, retrying")
-        try:
-            raw = _call_yandex(prompt_variables)
-            parsed = _extract_json(raw)
-        except Exception as e:
-            log.error(f"[{request_id}] Retry failed: {e}")
+    def _normalize_and_validate(parsed_list: list) -> list:
+        """Normalize Yandex steps and validate with Pydantic. Returns validated dicts."""
+        # Normalize steps if they have a "type" field (Yandex batch format)
+        normalized = []
+        if parsed_list and isinstance(parsed_list[0], dict):
+            first_type = (parsed_list[0].get("type") or "").lower().strip()
+            # Always attempt normalization if items look like Yandex step dicts
+            needs_normalize = (
+                first_type in _ALL_KNOWN_TYPES
+                or any(k in parsed_list[0] for k in ("question", "options", "answers", "choices"))
+            )
+            if needs_normalize:
+                normalized = [n for i, s in enumerate(parsed_list)
+                              if isinstance(s, dict) and (n := _normalize_step(s, i)) is not None]
+            else:
+                normalized = parsed_list
+        else:
+            normalized = parsed_list
 
-    # Normalize steps if they use Yandex batch format (have "type" like mcq/open/roleplay)
-    if isinstance(parsed, list) and parsed and isinstance(parsed[0], dict):
-        first_type = parsed[0].get("type", "")
-        if first_type in ("mcq", "open", "roleplay"):
-            parsed = [n for i, s in enumerate(parsed) if (n := _normalize_step(s, i)) is not None]
+        # Validate each question with Pydantic; skip invalid items
+        validated = []
+        for item in normalized:
+            if not isinstance(item, dict):
+                continue
+            if "id" not in item or not item["id"]:
+                item["id"] = str(uuid.uuid4())
+            if item.get("type") == "quiz":
+                opts = list(item.get("quizOptions") or [])
+                while len(opts) < 4:
+                    opts.append("")
+                item["quizOptions"] = opts[:4]
+                if item.get("correctIndex") is None:
+                    item["correctIndex"] = 0
+            try:
+                q = _Question(**item)
+                validated.append(q.model_dump())
+            except Exception as e:
+                log.warning(f"[{request_id}] Skipping invalid question: {e} | item={item}")
+        return validated
 
-    if parsed is None or not isinstance(parsed, list):
-        log.error(f"[{request_id}] Could not parse Yandex response as JSON array. raw={raw[:500]}")
-        raise HTTPException(
-            status_code=502,
-            detail="Не удалось разобрать ответ Yandex AI Studio как JSON. Попробуйте ещё раз.",
-        )
+    # ── Parse + validate with retry ──────────────────────────────────────────
+    MAX_ATTEMPTS = 2
+    validated_questions: list = []
 
-    # Validate each question with Pydantic; skip invalid items
-    validated_questions = []
-    for item in parsed:
-        if not isinstance(item, dict):
-            continue
-        # Ensure id field
-        if "id" not in item or not item["id"]:
-            item["id"] = str(uuid.uuid4())
-        # Ensure quiz questions always have exactly 4 options
-        if item.get("type") == "quiz":
-            opts = list(item.get("quizOptions") or [])
-            while len(opts) < 4:
-                opts.append("")
-            item["quizOptions"] = opts[:4]
-            if item.get("correctIndex") is None:
-                item["correctIndex"] = 0
-        try:
-            q = _Question(**item)
-            validated_questions.append(q.model_dump())
-        except Exception as e:
-            log.warning(f"[{request_id}] Skipping invalid question: {e} | item={item}")
+    for attempt in range(MAX_ATTEMPTS):
+        if attempt > 0:
+            log.warning(f"[{request_id}] Attempt {attempt+1}: retrying Yandex call (prev had {len(validated_questions)} valid Qs)")
+            try:
+                raw = _call_yandex(prompt_variables)
+            except Exception as e:
+                log.error(f"[{request_id}] Retry Yandex call failed: {e}")
+                break
+
+        parsed = _extract_json(raw)
+
+        # Retry JSON parse once within same attempt
+        if parsed is None and attempt == 0:
+            log.warning(f"[{request_id}] JSON parse failed, retrying Yandex call")
+            try:
+                raw = _call_yandex(prompt_variables)
+                parsed = _extract_json(raw)
+            except Exception as e:
+                log.error(f"[{request_id}] Retry failed: {e}")
+
+        if parsed is None or not isinstance(parsed, list):
+            if attempt < MAX_ATTEMPTS - 1:
+                continue
+            log.error(f"[{request_id}] Could not parse Yandex response as JSON array. raw={raw[:500]}")
+            raise HTTPException(
+                status_code=502,
+                detail="Не удалось разобрать ответ Yandex AI Studio как JSON. Попробуйте ещё раз.",
+            )
+
+        validated_questions = _normalize_and_validate(parsed)
+        if validated_questions:
+            break  # Success
 
     quiz_count = sum(1 for q in validated_questions if q.get("type") == "quiz")
     open_count = sum(1 for q in validated_questions if q.get("type") == "open")
@@ -1451,7 +1593,7 @@ async def generate_training(
     )
 
     if not validated_questions:
-        log.error(f"[{request_id}] No valid questions after parsing. raw={raw[:500]}")
+        log.error(f"[{request_id}] No valid questions after {MAX_ATTEMPTS} attempts. raw={raw[:500]}")
         raise HTTPException(
             status_code=502,
             detail="Yandex AI Studio вернул вопросы в неожиданном формате. Попробуйте ещё раз.",
@@ -1487,6 +1629,21 @@ async def finalize_course(
         f"[{request_id}] POST /api/courses/finalize - userId={user_id} "
         f"courseId={course_id} questions={len(body.questions)}"
     )
+
+    # Reject empty questions list
+    if not body.questions:
+        raise HTTPException(
+            status_code=400,
+            detail="Нельзя сохранить курс без вопросов. Сгенерируйте или добавьте вопросы вручную.",
+        )
+
+    # Reject questions with empty prompt text
+    invalid_indices = [i for i, q in enumerate(body.questions) if not q.prompt.strip()]
+    if invalid_indices:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Вопрос(ы) #{', '.join(str(i + 1) for i in invalid_indices)} не имеют текста.",
+        )
 
     supabase = get_admin_client()
 

@@ -224,7 +224,7 @@ function CoursesPageInner() {
             </button>
           </div>
         </div>
-        <CreateCourseWizard open={dialogOpen} onClose={() => setDialogOpen(false)} onSuccess={handleSuccess} />
+        <CreateCourseWizard open={dialogOpen} onClose={() => setDialogOpen(false)} onSuccess={handleSuccess} userId={userId!} />
       </>
     );
   }
@@ -620,6 +620,7 @@ function CoursesPageInner() {
         open={dialogOpen}
         onClose={() => setDialogOpen(false)}
         onSuccess={handleSuccess}
+        userId={userId!}
       />
     </>
   );

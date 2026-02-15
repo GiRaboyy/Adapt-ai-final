@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { apiFetch, safeJson } from '@/lib/api';
+import { createClient } from '@/lib/supabase/client';
 import {
   CourseManifest, CourseSize, Question, QuestionType,
   DraftPayload,
@@ -22,11 +23,11 @@ import {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-// Vercel serverless functions cap request bodies at ~4.5 MB.
-// Keep each file under 4 MB and total payload under 4 MB to avoid 413 errors.
-const MAX_FILE_SIZE   = 4 * 1024 * 1024;  // 4 MB per file
-const MAX_TOTAL_SIZE  = 4 * 1024 * 1024;  // 4 MB total across all files
+// Files are uploaded directly to Supabase Storage (bypasses Vercel ~4.5 MB body limit).
+const MAX_FILE_SIZE   = 30 * 1024 * 1024;   // 30 MB per file
+const MAX_TOTAL_SIZE  = 300 * 1024 * 1024;  // 300 MB total across all files
 const ALLOWED_EXTENSIONS = ['.pdf', '.txt', '.doc', '.docx'];
+const COURSES_BUCKET = 'courses';
 
 const SIZE_OPTIONS: { value: CourseSize; label: string; duration: string }[] = [
   { value: 'small',  label: 'Короткий', duration: '10–15 минут' },
@@ -35,10 +36,10 @@ const SIZE_OPTIONS: { value: CourseSize; label: string; duration: string }[] = [
 ];
 
 const LOADING_STEPS = [
-  'Читаем материалы',
-  'Строим план модулей',
-  'Генерируем уроки',
+  'Загружаем файлы',
+  'Парсим материалы',
   'Генерируем вопросы',
+  'Готовим редактор',
 ];
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -48,6 +49,7 @@ interface FileEntry {
   file: File;
   status: 'pending' | 'uploading' | 'done' | 'error';
   error?: string;
+  storagePath?: string;
 }
 
 type Phase = 'form' | 'loading' | 'editing' | 'saving';
@@ -56,6 +58,7 @@ interface Props {
   open: boolean;
   onClose: () => void;
   onSuccess: (manifest: CourseManifest) => void;
+  userId: string;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -69,6 +72,31 @@ function formatFileSize(bytes: number): string {
 function getFileExt(name: string): string {
   const parts = name.toLowerCase().split('.');
   return parts.length > 1 ? `.${parts[parts.length - 1]}` : '';
+}
+
+function friendlyUploadError(err: { statusCode?: string | number; message?: string }): string {
+  const msg = err.message ?? '';
+  if (msg.includes('row-level security') || msg.includes('RLS') || String(err.statusCode) === '403') {
+    return 'Нет прав на загрузку. Проверь политики Storage для bucket «courses» в Supabase Dashboard.';
+  }
+  return `[${err.statusCode ?? 'ERR'}] ${msg}`;
+}
+
+function safeStorageKey(originalName: string): string {
+  const ext = getFileExt(originalName);
+  return `${crypto.randomUUID()}${ext}`;
+}
+
+function guessContentType(file: File): string {
+  if (file.type && file.type !== 'application/octet-stream') return file.type;
+  const ext = getFileExt(file.name);
+  const map: Record<string, string> = {
+    '.pdf': 'application/pdf',
+    '.txt': 'text/plain',
+    '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    '.doc': 'application/msword',
+  };
+  return map[ext] ?? 'application/octet-stream';
 }
 
 function validateFile(file: File): string | null {
@@ -438,7 +466,8 @@ function FormPhase({
                 />
               </div>
               <h3 className="text-lg font-bold text-gray-900 mb-1">Перетащите файлы сюда</h3>
-              <p className="text-sm text-gray-500 mb-6">или нажмите для выбора с компьютера</p>
+              <p className="text-sm text-gray-500 mb-1">или нажмите для выбора с компьютера</p>
+              <p className="text-xs text-gray-400 mb-5">Макс. 30 МБ на файл, 300 МБ суммарно</p>
               <div className="flex flex-wrap justify-center gap-2">
                 {['PDF', 'DOCX', 'TXT'].map((fmt) => (
                   <span
@@ -625,6 +654,7 @@ function EditingPhase({
   moveDown,
   addQuestion,
   onSave,
+  onRegenerate,
   isSaving,
   error,
 }: {
@@ -638,6 +668,7 @@ function EditingPhase({
   moveDown: (idx: number) => void;
   addQuestion: (type: QuestionType) => void;
   onSave: () => void;
+  onRegenerate: () => void;
   isSaving: boolean;
   error: string;
 }) {
@@ -653,6 +684,25 @@ function EditingPhase({
         <div className="flex items-center gap-2.5 px-6 py-2 bg-amber-50 border-b border-amber-200">
           <AlertCircle size={14} className="text-amber-600 shrink-0" />
           <p className="text-sm text-amber-800">{error}</p>
+        </div>
+      )}
+
+      {/* Empty questions warning */}
+      {questions.length === 0 && !error && (
+        <div className="flex items-start gap-3 px-6 py-3 bg-gold/10 border-b border-gold/30">
+          <AlertCircle size={18} className="text-gold shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <p className="font-semibold text-sm text-ink">Вопросы не были сгенерированы</p>
+            <p className="text-xs text-gray-600 mt-1">
+              Добавьте вопросы вручную или нажмите «Перегенерировать».
+            </p>
+          </div>
+          <button
+            onClick={onRegenerate}
+            className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-gold text-ink hover:bg-gold/90 transition-colors shrink-0"
+          >
+            Перегенерировать
+          </button>
         </div>
       )}
 
@@ -903,17 +953,26 @@ function EditingPhase({
           <span className="w-1.5 h-1.5 rounded-full bg-[#85EB59] shadow-[0_0_6px_#85EB59]" />
           <span className="text-gray-200">Черновик</span>
         </div>
-        <button
-          onClick={onSave}
-          disabled={isSaving || questions.length === 0}
-          className={cn(
-            'bg-[#85EB59] hover:bg-[#76d44f] text-black font-semibold py-3 px-8 rounded-xl transition-all flex items-center gap-2 text-sm shadow-lg shadow-[#85EB59]/20',
-            (isSaving || questions.length === 0) && 'opacity-50 cursor-not-allowed'
-          )}
-        >
-          {isSaving && <Loader2 size={14} className="animate-spin" />}
-          Сохранить
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onRegenerate}
+            disabled={isSaving}
+            className="bg-[#ffba49] hover:bg-[#f0ad3a] text-black font-semibold py-3 px-5 rounded-xl transition-all text-sm shadow-lg shadow-[#ffba49]/20 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Перегенерировать
+          </button>
+          <button
+            onClick={onSave}
+            disabled={isSaving || questions.length === 0}
+            className={cn(
+              'bg-[#85EB59] hover:bg-[#76d44f] text-black font-semibold py-3 px-8 rounded-xl transition-all flex items-center gap-2 text-sm shadow-lg shadow-[#85EB59]/20',
+              (isSaving || questions.length === 0) && 'opacity-50 cursor-not-allowed'
+            )}
+          >
+            {isSaving && <Loader2 size={14} className="animate-spin" />}
+            Сохранить
+          </button>
+        </div>
       </div>
     </>
   );
@@ -921,7 +980,7 @@ function EditingPhase({
 
 // ─── Main Wizard Component ────────────────────────────────────────────────────
 
-export function CreateCourseWizard({ open, onClose, onSuccess }: Props) {
+export function CreateCourseWizard({ open, onClose, onSuccess, userId }: Props) {
   const router = useRouter();
 
   const [phase, setPhase] = useState<Phase>('form');
@@ -987,7 +1046,7 @@ export function CreateCourseWizard({ open, onClose, onSuccess }: Props) {
     setLoadingStep(0);
     setError('');
 
-    // Guard: total payload size (Vercel serverless limit ≈ 4.5 MB)
+    // Guard: total payload size
     const totalSize = files.reduce((sum, e) => sum + e.file.size, 0);
     if (totalSize > MAX_TOTAL_SIZE) {
       setError(
@@ -998,26 +1057,70 @@ export function CreateCourseWizard({ open, onClose, onSuccess }: Props) {
       return;
     }
 
-    const formData = new FormData();
-    formData.append('title', title.trim());
-    formData.append('size', courseSize);
+    const supabase = createClient();
+    const courseId = crypto.randomUUID();
+
+    // ── Step 0: Upload files directly to Supabase Storage ──────────────────
+    const uploadedFiles: Array<{
+      name: string; originalName: string; storagePath: string; mimeType: string; size: number;
+    }> = [];
+
     for (const entry of files) {
-      formData.append('files', entry.file, entry.file.name);
+      const contentType = guessContentType(entry.file);
+      const safeKey = safeStorageKey(entry.file.name);
+      const storagePath = `${userId}/${courseId}/files/${safeKey}`;
+
+      setFiles(prev => prev.map(f =>
+        f.id === entry.id ? { ...f, status: 'uploading' as const } : f
+      ));
+
+      try {
+        const { error: uploadErr } = await supabase.storage
+          .from(COURSES_BUCKET)
+          .upload(storagePath, entry.file, { upsert: true, contentType });
+        if (uploadErr) throw new Error(friendlyUploadError(uploadErr));
+
+        setFiles(prev => prev.map(f =>
+          f.id === entry.id ? { ...f, status: 'done' as const, storagePath } : f
+        ));
+        uploadedFiles.push({
+          name: safeKey, originalName: entry.file.name, storagePath, mimeType: contentType, size: entry.file.size,
+        });
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        setFiles(prev => prev.map(f =>
+          f.id === entry.id ? { ...f, status: 'error' as const, error: msg } : f
+        ));
+      }
     }
 
-    let payload: DraftPayload;
+    if (uploadedFiles.length === 0) {
+      setError('Ни один файл не загружен успешно. Проверьте формат файлов и попробуйте снова.');
+      setPhase('form');
+      return;
+    }
+
+    // ── Step 1: Call /api/courses/process to parse files + get extractedText ─
+    setLoadingStep(1);
+
+    let extractedText = '';
     try {
-      const res = await apiFetch('/api/courses/draft', {
+      const res = await apiFetch('/api/courses/process', {
         method: 'POST',
-        body: formData,
-        headers: {},
+        body: JSON.stringify({
+          courseId,
+          userId,
+          title: title.trim(),
+          size: courseSize,
+          files: uploadedFiles,
+        }),
       });
-      const data = await safeJson<DraftPayload & { ok: boolean }>(res);
-      if (!data.ok) {
-        throw new Error('Ошибка при загрузке файлов');
-      }
-      payload = data;
-      setDraft(payload);
+      const data = await safeJson<{
+        ok: boolean; manifest: CourseManifest;
+        extractedText?: string; extractedStats?: { chars: number; filesCount: number; truncated: boolean };
+      }>(res);
+      if (!data.ok) throw new Error('Ошибка парсинга файлов');
+      extractedText = data.extractedText ?? '';
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg);
@@ -1025,33 +1128,43 @@ export function CreateCourseWizard({ open, onClose, onSuccess }: Props) {
       return;
     }
 
-    // Step 0 done → step 1 active
-    setLoadingStep(1);
-    await new Promise((r) => setTimeout(r, 800));
+    if (!extractedText || extractedText.trim().length < 100) {
+      setError('Не удалось извлечь достаточно текста из загруженных файлов. Возможно, PDF — скан. Загрузите текстовый PDF, DOCX или TXT.');
+      setPhase('form');
+      return;
+    }
 
-    // Step 1 done → step 2 active
+    // Build draft payload for finalize step
+    const draftPayload: DraftPayload = {
+      draftCourseId: courseId,
+      uploadedFiles: uploadedFiles.map(f => ({
+        path: f.name, storagePath: f.storagePath, originalName: f.originalName, mime: f.mimeType, size: f.size,
+      })),
+      extractedText,
+      extractedStats: { chars: extractedText.length, filesCount: uploadedFiles.length, truncated: false },
+    };
+    setDraft(draftPayload);
+
+    // ── Step 2: Generate questions via /api/training/generate ───────────────
     setLoadingStep(2);
 
     try {
       const res = await apiFetch('/api/training/generate', {
         method: 'POST',
         body: JSON.stringify({
-          draftCourseId: payload.draftCourseId,
+          draftCourseId: courseId,
           title: title.trim(),
           size: courseSize,
-          extractedText: payload.extractedText,
+          extractedText,
         }),
       });
       const data = await safeJson<{ ok: boolean; questions: Question[] }>(res);
-      if (!data.ok) {
-        throw new Error('Ошибка генерации вопросов');
-      }
-
+      if (!data.ok) throw new Error('Ошибка генерации вопросов');
       if (!data.questions || data.questions.length === 0) {
         throw new Error('Не удалось сгенерировать вопросы. Попробуйте ещё раз.');
       }
 
-      // Step 2 done → step 3 active
+      // Step 3: Ready
       setLoadingStep(3);
       await new Promise((r) => setTimeout(r, 500));
 
@@ -1098,8 +1211,42 @@ export function CreateCourseWizard({ open, onClose, onSuccess }: Props) {
 
   // ── Finalize ───────────────────────────────────────────────────────────────
 
+  const handleRegenerate = async () => {
+    if (!draft) return;
+    setPhase('loading');
+    setLoadingStep(2);
+    setError('');
+    try {
+      const res = await apiFetch('/api/training/generate', {
+        method: 'POST',
+        body: JSON.stringify({
+          draftCourseId: draft.draftCourseId,
+          title: title.trim(),
+          size: courseSize,
+          extractedText: draft.extractedText,
+        }),
+      });
+      const data = await safeJson<{ ok: boolean; questions: Question[] }>(res);
+      if (!data.ok) throw new Error('Ошибка генерации вопросов');
+      if (!data.questions || data.questions.length === 0) {
+        throw new Error('Не удалось сгенерировать вопросы. Попробуйте ещё раз.');
+      }
+      setQuestions(data.questions);
+      setSelectedIdx(0);
+      setPhase('editing');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(msg);
+      setPhase('editing');
+    }
+  };
+
   const handleSave = async () => {
-    if (!draft || questions.length === 0) return;
+    if (!draft) return;
+    if (questions.length === 0) {
+      setError('Нельзя сохранить курс без вопросов. Добавьте вопросы вручную или нажмите «Перегенерировать».');
+      return;
+    }
     setPhase('saving');
     setError('');
     try {
@@ -1176,6 +1323,7 @@ export function CreateCourseWizard({ open, onClose, onSuccess }: Props) {
           moveDown={moveDown}
           addQuestion={addQuestion}
           onSave={handleSave}
+          onRegenerate={handleRegenerate}
           isSaving={phase === 'saving'}
           error={error}
         />
